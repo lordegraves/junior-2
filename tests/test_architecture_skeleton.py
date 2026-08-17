@@ -17,7 +17,9 @@ from junior.scoring.baseline import ConservativeDecisionEngine
 class StubInterpreter:
     fact: ExtractedFact
 
-    def interpret(self, document: SourceDocument) -> tuple[ExtractedFact, ...]:
+    def interpret_job_posting(
+        self, document: SourceDocument
+    ) -> tuple[ExtractedFact, ...]:
         return (self.fact,)
 
 

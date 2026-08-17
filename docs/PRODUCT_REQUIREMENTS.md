@@ -3,21 +3,24 @@
 ## Status and vision
 
 This is a future-product concept, not a statement of implemented behavior.
-Junior 2.0 is a fully native desktop application in which local interpretation
-normalizes job postings and resumes for a deterministic scoring engine.
+Junior 2.0 is a native desktop application. A local AI model reads job postings
+and résumés and turns varied wording into consistent facts. A separate rules-based
+engine uses those facts to score jobs. The AI does not make the decision.
 
 > The model reads. The engine decides. The user remains in control.
 
-For company additions, Junior gathers evidence, proposes a bounded action,
-executes it through controlled code, and validates real jobs and pagination.
-AI remains an internal implementation detail rather than a chatbot workflow.
+For company additions, Junior gathers public clues and lets the model choose from
+a limited set of safe next steps. Junior performs the step and confirms that it
+found real jobs, complete job details, and every results page. The AI works behind
+the scenes rather than acting as a chatbot.
 
 ## Goals
 
 - Interpret varied job-posting and resume language without inventing facts.
 - Preserve stated, missing, ambiguous, conflicting, and unreadable information.
-- Give the scoring engine normalized, evidence-backed inputs.
-- Keep recommendations, omissions, ranking, and policy deterministic and auditable.
+- Give the scoring engine consistent facts supported by exact source text.
+- Use fixed, testable rules for recommendations, omissions, and ranking so the
+  same facts produce the same answer and the result can be explained.
 - Make company addition substantially more reliable without making users hunt
   for recruiting-platform URLs.
 - Operate locally across a realistic range of consumer hardware.
@@ -25,9 +28,9 @@ AI remains an internal implementation detail rather than a chatbot workflow.
 
 ## Non-goals
 
-- An autonomous job-application agent or general-purpose assistant.
+- A system that applies to jobs on its own or acts as a general assistant.
 - Model-authored recommendations, omissions, compensation estimates, or facts.
-- Arbitrary model-generated network requests, code, or collector configurations.
+- Letting a model visit any site it chooses, run code, or invent job-site settings.
 - Cloud processing as a hidden requirement.
 - Training on private user material by default.
 
@@ -36,18 +39,18 @@ AI remains an internal implementation detail rather than a chatbot workflow.
 Users install and launch one desktop application, complete guided setup, import
 or edit a profile, select companies, scan, and review results without a browser,
 terminal, Python, or YAML. The interface must expose evidence and uncertainty in
-plain language, support keyboard and assistive technology, remain responsive
-during model work, and offer correction, export, deletion, and diagnostic paths.
+plain language, work by keyboard and with screen readers, remain responsive while
+the model works, and let users correct, export, or delete their information.
 
 ## Matching levels and provisional hardware targets
 
-All levels use the same workflow and deterministic decision engine. A level
-changes interpretation depth and speed, not policy or evidence standards.
+All levels use the same workflow and fixed decision rules. A level changes how
+deeply and quickly Junior reads documents, not its safety or evidence standards.
 
 | Level | Behavior | Initial target |
 |---|---|---|
-| Fast | Primarily deterministic extraction with the lightest assistance | 4 GB RAM, 128 GB storage, modern Windows 11 device |
-| Balanced | Local interpretation plus deterministic rules | 16 GB RAM, 256 GB SSD, modern Intel i5, AMD Ryzen 5, or Apple M-series |
+| Fast | Primarily fixed non-AI reading rules with the lightest assistance | 4 GB RAM, 128 GB storage, modern Windows 11 device |
+| Balanced | Local AI interpretation plus fixed decision rules | 16 GB RAM, 256 GB SSD, modern Intel i5, AMD Ryzen 5, or Apple M-series |
 | Detailed | Larger/deeper local interpretation | Windows/Linux: 32 GB RAM and 512 GB SSD; Apple: 24–32 GB unified memory and 512 GB SSD |
 
 These are evaluation targets, not final minimum requirements. The installer
@@ -57,40 +60,53 @@ safely. Existing audited decisions are not silently rewritten.
 
 ## Graceful fallback
 
-A missing model, unsupported instruction set, memory pressure, timeout, corrupt
-package, or failed validation must produce a clear fallback—not a crash or a
-fabricated result. Junior may use deterministic parsing, reduce batch size, defer
-work, or ask for review. It must say what capability was reduced and how to fix it.
+If a model is missing, incompatible, short on memory, too slow, damaged, or unable
+to pass a safety check, Junior must not crash or invent a result. It can use its
+fixed non-AI reading rules, process fewer items at once, wait, or ask the user to
+review the item. It explains what was reduced and what the user can do next.
 
 ## Model installation and updates
 
-Models are versioned components with manifest, license, compatibility, checksum,
-signature, disk-space check, resumable installation, health check, rollback, and
-removal. Application and model updates may be independent. An interrupted update
-must preserve the last working version, and offline/manual installation must be
-considered for restricted environments.
+Each model package identifies its version, license, supported computers, and
+contents. Junior verifies that the download is authentic and unchanged, checks
+available disk space, can resume an interrupted download, tests the installed
+model, and can return to the previous working version. The application and model
+may update separately. Offline installation must be considered for restricted
+environments.
 
 ## Privacy, licensing, and security
 
-Resume and profile content stays local by default. Telemetry and data donation
-are separate, explicit opt-ins; deletion and export are understandable. Training
-data must be licensed, consented, provenance-tracked, and stripped of unnecessary
-personal data. Model, dataset, runtime, and GUI licenses must permit the intended
-use and distribution. Job pages, resumes, and embedded instructions are untrusted
-data and cannot override Junior's rules or gain tool authority.
+Résumé and profile content stays on the user's computer by default. Usage reporting
+and donating examples for future training are separate choices that are off unless
+the user clearly agrees. Training material must have known origins and permission
+for use, and unnecessary personal information must be removed. Every model and
+software component must allow Junior's intended use and distribution. Instructions
+hidden in job pages or documents cannot override Junior's rules.
 
 ## Migration from Junior 1.x
 
-Junior 1.x remains usable during development. Migration inventories and backs up
-profiles, resumes, companies, history, applications, settings, and credentials or
-credential references; imports supported data through versioned adapters; reports
-anything unsupported; validates the result; and leaves the original installation
-recoverable. Users may evaluate 2.0 without surrendering 1.x.
+Junior 1.x remains usable during development. Before importing, Junior lists and
+backs up profiles, résumés, companies, history, applications, settings, and saved
+credential references. It reports anything it cannot import and checks the result.
+The original installation remains recoverable, so users can try 2.0 without giving
+up 1.x.
+
+## Starter companies and existing collectors
+
+Junior 2.0 ships the same version 1 catalog of 50 companies used by Junior 1.x.
+The shipped list is a read-only starting point, not a claim that these are the
+only or best employers. Users choose what to scan and can add or correct companies
+without changing the shipped file.
+
+The mature Junior 1.x collectors are moved into 2.0 with their tests and proven
+site-specific behavior. Junior adapts them to the new common job format instead of
+rewriting them. Known catalog entries go directly to their tested collector. New
+or changed companies use discovery to identify which tested collector should run.
 
 ## Readiness criteria
 
-Release requires validated schemas, reproducible model packages, independent
-quality and security evaluation, supported-hardware results, deterministic audit
-traces, accessible native workflows, safe migration and rollback, diagnostics
-without private content, licensing review, and field testing on representative
-machines and company platforms.
+Before release, Junior needs a proven information format, repeatable and verifiable
+model packages, independent quality and security testing, results from supported
+hardware, understandable decision histories, accessible desktop workflows, safe
+upgrade and rollback, diagnostics without private content, license review, and
+field testing on representative computers and company job systems.

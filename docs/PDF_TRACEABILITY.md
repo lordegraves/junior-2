@@ -4,6 +4,10 @@ This index maps all 30 numbered sections of the initial concept document into
 maintained repository documents. It prevents source ideas from being lost while
 keeping future proposals distinct from implemented behavior.
 
+The first column keeps the original concept-section names, including technical
+terms. The second column points to the maintained explanation written in plainer
+language.
+
 | Concept section | Maintained location |
 |---|---|
 | 1. Document purpose and planning status | Product requirements: Status and vision |
@@ -30,7 +34,7 @@ keeping future proposals distinct from implemented behavior.
 | 22. Licensing | Product requirements: Privacy, licensing, and security |
 | 23. Security and prompt injection | Architecture: Security, privacy, and persistence |
 | 24. Native desktop UX and accessibility | Product requirements: Native experience |
-| 25. Migration from 1.x | Product requirements: Migration from Junior 1.x |
+| 25. Migration from 1.x | Product requirements: Migration from Junior 1.x; Architecture: Reusing Junior 1.x collectors and companies |
 | 26. Thirteen delivery phases | Evaluation plan: Delivery phases |
 | 27. Readiness checklist | Product requirements: Readiness criteria |
 | 28. Risks | Evaluation plan: Principal risks |
