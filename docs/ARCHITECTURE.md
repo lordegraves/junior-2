@@ -86,6 +86,13 @@ and the résumé text that supports the match. If a posting offers different way
 to qualify, Junior keeps those choices separate instead of incorrectly requiring
 the applicant to satisfy all of them.
 
+The first detailed contract covers job and résumé qualifications. Requirements
+are stored as groups containing one or more acceptable paths. Every item in a path
+must be satisfied, while satisfying any one path satisfies the group. This keeps
+“bachelor's plus seven years, or master's plus five years” as two real choices.
+The model-facing format rejects extra fields, including recommendations the model
+has no authority to make. See [What the AI Must Tell Junior](INTERPRETATION_CONTRACT.md).
+
 ## Two evidence checks
 
 Every extracted fact passes two separate checks before scoring:

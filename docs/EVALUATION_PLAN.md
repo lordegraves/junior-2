@@ -33,8 +33,10 @@ invent reassuring percentages before representative testing exists.
 
 ## Delivery phases
 
-1. Define how Junior records consistent facts and their exact sources.
+1. Define how Junior records consistent facts and their exact sources. The first
+   detailed job-and-résumé qualification contract is now implemented.
 2. Define the limited output format and the states for clear or uncertain facts.
+   Qualification output now has a strict version 1 parser; other job facts remain.
 3. Check that supporting text exists and actually means what Junior claims.
 4. Build legally usable, reviewed, separate teaching and testing material.
 5. Compare small local models with Junior's existing non-AI rules.

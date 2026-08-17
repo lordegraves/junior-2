@@ -47,6 +47,7 @@ Planning and design documents:
 
 - [Product requirements](docs/PRODUCT_REQUIREMENTS.md)
 - [Architecture](docs/ARCHITECTURE.md)
+- [AI interpretation contract](docs/INTERPRETATION_CONTRACT.md)
 - [Evaluation and delivery plan](docs/EVALUATION_PLAN.md)
 - [Decisions and open questions](docs/DESIGN_DECISIONS.md)
 - [Concept-document traceability](docs/PDF_TRACEABILITY.md)

@@ -16,9 +16,9 @@ language.
 | 4. LLM as an internal service | Architecture: Responsibility boundaries |
 | 5. Model and engine responsibility split | Architecture: Responsibility boundaries |
 | 6. High-level architecture | Architecture: opening diagram and dependency direction |
-| 7. Schema before model | Architecture: Normalized evidence model |
-| 8. Explicit fact states | Architecture: Normalized evidence model |
-| 9. Resume evidence | Architecture: Normalized evidence model |
+| 7. Schema before model | Architecture: How Junior records extracted facts; AI interpretation contract |
+| 8. Explicit fact states | Architecture: How Junior records extracted facts; AI interpretation contract |
+| 9. Resume evidence | AI interpretation contract: Résumé qualifications |
 | 10. Two validation gates | Architecture: Two-stage evidence validation |
 | 11. Deterministic scoring | Architecture: Responsibility boundaries |
 | 12. Company discovery and bounded actions | Architecture: Company discovery loop |
