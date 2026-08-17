@@ -31,5 +31,10 @@ python -m venv .venv
 - `infrastructure`: replaceable database, networking, and model adapters.
 - `desktop`: native presentation code; it must not own product rules.
 
-See [architecture](docs/ARCHITECTURE.md) and
-[decisions](docs/DESIGN_DECISIONS.md).
+Planning and design documents:
+
+- [Product requirements](docs/PRODUCT_REQUIREMENTS.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [Evaluation and delivery plan](docs/EVALUATION_PLAN.md)
+- [Decisions and open questions](docs/DESIGN_DECISIONS.md)
+- [Concept-document traceability](docs/PDF_TRACEABILITY.md)
