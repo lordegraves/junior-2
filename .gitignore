@@ -9,3 +9,4 @@ dist/
 *.sqlite3
 *.log
 artifacts/
+.DS_Store
