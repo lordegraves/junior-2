@@ -25,6 +25,48 @@ and model handled the document.
 Confidence never replaces evidence. A highly confident claim with incorrect
 evidence is rejected.
 
+Junior divides the relevant source section into numbered passages. The model
+selects passage numbers; it does not copy evidence words or calculate character
+positions. Junior then supplies the exact source text and positions from those
+passages. An unknown passage number rejects the response. This keeps small local
+models from accidentally paraphrasing evidence while preserving strict proof.
+
+Junior gives smaller local models a bounded number of passages at a time and
+combines the results in source order. This prevents a long qualification section
+from causing the model to stop after its first few requirements. Each batch gets
+unique internal identifiers before the semantic review.
+
+The second model pass reviews existing identifiers in small batches. It may
+correct meaning, but it cannot delete or restructure extracted requirements or
+change their evidence. Unknown corrections are ignored. Clear requirement words
+such as “must” and “requires” also receive a fixed source-based check so a small
+model cannot silently skip them. Ordinary required items are displayed together;
+alternative paths appear only when the source explicitly connects complete
+qualification routes. An incidental “or” within a degree, clearance name, or skill
+does not make unrelated requirements interchangeable. Source headings and clear
+words such as “preferred,” “desirable,” “bonus,” and “a plus” determine whether an
+item is required or preferred instead of trusting the model's label.
+
+Before either model pass, Junior selects one or more separately bounded
+qualification-focused parts of the posting. This keeps requirements that appear
+before and after unrelated material without sending benefits, compensation,
+company descriptions, application instructions, or equal-employment/legal
+material to the model as qualifications. Every selected part retains its exact
+position in the complete posting. Fixed checks then remove headings, page metadata, recruiting slogans, and category
+claims whose quoted words do not express that category. Exact quotation proves
+that words came from the posting; these structural checks help prove that the
+words are actually a qualification.
+
+If Ollama answers with malformed JSON, Junior makes one controlled retry that asks
+for the same record in the required format. A second unreadable answer fails the
+posting safely; it is not silently accepted.
+
+Repeated experience, age-and-license, and language requirements are consolidated
+when their meaning is demonstrably equivalent. Location-specific requirements remain visible and
+auditable in a separate conditional group; they are not presented as requirements
+every applicant must meet. The later scoring adapter must evaluate those conditions
+against the job's actual location before making a decision.
+
 ## Different ways to qualify
 
 Requirements are organized into groups and paths:
@@ -72,6 +114,12 @@ Junior rejects a model response when:
 - A stated qualification section contains no groups.
 - A missing or unreadable section contains invented groups.
 
-Checking whether the quoted words truly support the model's meaning is a separate
-future check. Exact quote validation is implemented first; passing it does not yet
-prove semantic accuracy.
+Junior reports these failures using a narrow reason code. The reason identifies
+the failed rule, not the source text or raw model response. This provides useful
+troubleshooting information without turning diagnostics into a copy of a job
+posting or résumé.
+
+Exact quotation alone does not prove semantic accuracy. Junior therefore combines
+the separate semantic review with fixed section and category checks. The current
+experiment still requires evaluation against varied real postings before these
+checks can be treated as production-ready.

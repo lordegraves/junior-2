@@ -26,6 +26,12 @@
 - The native interface will use PySide6 with Qt Widgets. Before building the full
   interface, a small trial must prove it can be packaged, signed, accessible, and
   responsive on supported computers.
+- The first GUI slice is a fixture-backed qualification review workspace. The GUI
+  receives finished review records and does not parse model output, validate
+  evidence, compare résumés, or score jobs.
+- The first live interpretation trial uses Ollama over a same-computer connection.
+  This permits early model testing without deciding that Ollama will ship in the
+  finished product. The adapter cannot contact a remote model address.
 - Junior 2.0 will migrate the mature Junior 1.x collectors with their existing
   tests. It will adapt their inputs and outputs to 2.0 rather than rewrite their
   proven recruiting-platform behavior.

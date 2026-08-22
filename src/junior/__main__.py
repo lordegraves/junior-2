@@ -1,12 +1,12 @@
-"""Development entry point for the Junior 2.0 skeleton."""
+"""Launch Junior 2.0's native desktop review workspace."""
 
-from junior.bootstrap import describe_runtime
+import sys
+
+from junior.bootstrap import run_application
 
 
 def main() -> int:
-    """Report the currently wired capability without pretending it is a product."""
-    print(describe_runtime())
-    return 0
+    return run_application(sys.argv)
 
 
 if __name__ == "__main__":

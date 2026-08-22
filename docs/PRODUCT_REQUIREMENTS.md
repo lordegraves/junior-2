@@ -42,6 +42,24 @@ terminal, Python, or YAML. The interface must expose evidence and uncertainty in
 plain language, work by keyboard and with screen readers, remain responsive while
 the model works, and let users correct, export, or delete their information.
 
+The first native experiment displays reviewed qualification examples or reads a
+pasted posting through a separately installed local model. Selecting a requirement
+highlights its evidence. Alternative paths, missing qualifications, rejected
+claims, and the not-yet-connected engine state are visible without exposing raw
+model output by default. This is a durable starting point, not the completed
+application.
+
+For live pasted postings, the experiment performs extraction and semantic review
+as separate steps. Semantic review uses headings and surrounding wording to check
+what a qualification means and whether it is required, preferred, or unclear. Its
+corrected output must pass the contract and exact-evidence checks again before the
+interface displays it.
+
+During evaluation, Junior can read a copied RC6 raw-scan ZIP downloaded by the
+user from RC6 Reports. It selects a small, varied set of complete public postings
+without accessing or changing the RC6 database. Profiles, résumés, credentials,
+applications, and RC6 decisions are outside this import boundary.
+
 ## Matching levels and provisional hardware targets
 
 All levels use the same workflow and fixed decision rules. A level changes how

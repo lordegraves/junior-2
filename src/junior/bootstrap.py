@@ -1,9 +1,11 @@
-"""Composition root where production adapters will eventually be selected."""
+"""Composition root where Junior's concrete adapters are selected."""
+
+from collections.abc import Sequence
 
 
-def describe_runtime() -> str:
-    """Describe the deliberately small first implementation slice."""
-    return (
-        "Junior 2.0 architecture skeleton: evidence validation is available; "
-        "desktop, model, persistence, and collector adapters are not yet wired."
-    )
+def run_application(arguments: Sequence[str] | None = None) -> int:
+    """Launch the current native review workspace."""
+
+    from junior.desktop.application import run_desktop_application
+
+    return run_desktop_application(arguments)

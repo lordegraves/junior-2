@@ -46,6 +46,41 @@ source document -> proposed fact -> confirm exact evidence -> safe review
 This small path establishes the safety boundary before selecting the final AI
 software, model, database layout, or job-collector migration plan.
 
+The first native window follows that same boundary. The application layer gives
+the window a finished review record containing the source text, qualification
+structure, evidence locations, validation result, and engine status. The window
+only presents that record. It does not interpret model output, validate evidence,
+compare a résumé, or score a job. Reviewed examples and the experimental local
+model adapter both produce the same review record.
+
+The first model trial uses a loopback-only Ollama connection. “Loopback-only”
+means Junior contacts a model service running on the same computer, not an
+internet model service. The job posting is treated as untrusted data. The adapter
+asks for JSON, the strict parser rejects missing or extra fields, and the evidence
+validator rejects quotes or locations that do not match the posting. Ollama is a
+development adapter, not yet the final bundled runtime decision.
+
+The adapter gives Ollama the same closed JSON structure that Junior validates
+afterward. This steers the model away from unsupported fields and values, but it
+does not replace Junior's independent parser or evidence checks.
+
+The model must copy evidence text exactly, but ordinary code calculates its final
+location. If a quote occurs exactly once, Junior records the correct start and end
+positions without trusting the model's counting. If the quote is missing or occurs
+more than once and the supplied location is wrong, Junior rejects it rather than
+guessing which passage the model meant.
+
+If a small model copies the same unique sequence of at least three words but
+changes only capitalization, whitespace, apostrophe style, or punctuation,
+Junior locates that sequence and replaces it with the exact source passage.
+Changed words, reordered words, short fragments, and duplicate matches are still
+rejected.
+
+Rejected interpretations receive a privacy-safe reason code such as a missing
+field, unsupported value, empty structure, or unverified evidence. The code helps
+developers reproduce the rule that failed without recording the posting, the raw
+model response, or private résumé information.
+
 ## Responsibility boundaries
 
 The interpretation service reads job postings and résumés. It turns different
@@ -105,6 +140,44 @@ Every extracted fact passes two separate checks before scoring:
 The second check may eventually use another carefully tested model. Even then,
 it only verifies meaning; it cannot make the job decision. A failed check sends
 the fact to a safer non-AI method or to the user for review.
+
+The current experiment now performs this as a second, narrower model pass. It
+reviews each proposed qualification with the complete posting, its heading, and
+nearby wording. It may correct category, required versus preferred status,
+alternative paths, or an uncertainty state. The corrected record must pass the
+same strict structure and exact-evidence checks again. Initially the two passes
+use the same local model through separate task methods; the model router boundary
+allows semantic review to move to a different model if measured accuracy requires
+it.
+
+After that review, narrow deterministic guardrails correct categories only when
+the wording is unmistakable—for example, Public Trust is a security-clearance
+condition, a degree is education, and “knowledge of” or “ability to” describes a
+skill. These rules do not classify vague wording. They reduce repeatable small-
+model mistakes without allowing ordinary keyword overlap to decide whether the
+applicant qualifies.
+
+## RC6 evaluation import
+
+The evaluation bridge reads RC6's existing raw-scan ZIP as an external, read-only
+file. It never opens the RC6 database. A streaming parser avoids loading the full
+export into memory. Archive shape and expanded size are bounded, incomplete and
+oversized descriptions are excluded, job identifiers are deduplicated, and a
+stable hash selects the same varied sample each time from an unchanged export.
+The imported public postings remain in memory only for the current session.
+
+Experimental local-model calls use a bounded context, output limit, and five-minute
+deadline. A timeout is reported separately from a missing runtime. No partial
+interpretation reaches review or scoring.
+
+Before model interpretation, deterministic code selects one or more independently
+bounded qualification sections using recognizable headings. This preserves an
+earlier requirement when another qualification section appears later, while
+skipping company, legal, benefits, compensation, keyword, and similar-job material
+between or after the selected sections. The complete original posting remains the
+evidence source, and every selected passage retains its exact original position.
+If no credible heading exists, Junior uses a size-bounded full-posting fallback and
+does not claim that a qualification section was found.
 
 ## How Junior finds a company's job system
 
