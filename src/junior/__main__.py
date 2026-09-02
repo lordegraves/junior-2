@@ -1,4 +1,4 @@
-"""Launch Junior 2.0's native desktop review workspace."""
+"""Launch the native Junior 2.0 desktop application."""
 
 import sys
 

@@ -185,6 +185,35 @@ def test_explicit_phrases_correct_small_model_category_errors() -> None:
     ]
 
 
+def test_fresh_scan_merged_role_and_company_copy_is_rejected() -> None:
+    statements = [
+        "At Microsoft, our mission is to empower every person and organization.",
+        "Responsibilities Drive well-scoped design and implementation work.",
+        "- Partner closely with commercial and legal teams on contracting matters.",
+        "AI is an extremely powerful tool that must be created with safety "
+        "at its core.",
+        "If you are someone passionate about Linux, please keep on reading.",
+        "We balance our programs to meet local needs and ensure fairness globally.",
+        "Distributed work environment with twice-yearly team sprints in person",
+        "Opportunity to travel to new locations to meet colleagues",
+        "Here’s what we are looking for with this role:",
+        (
+            "Knowledge of Azure. Embody our culture and values Qualifications "
+            "Required Qualifications: Bachelor's Degree in Computer Science."
+        ),
+        "hardware and software technologies that power all of Google's services.",
+        "Coordinating the release and optimization of software.",
+        "Improving the effectiveness and productivity of engineering teams.",
+        "Leverage AI tools to improve deliverables and align with team goals.",
+    ]
+
+    corrected = apply_explicit_category_guardrails(_payload(
+        [(statement, "skill") for statement in statements]
+    ))
+
+    assert corrected["groups"] == []
+
+
 def test_unclear_wording_is_left_for_model_or_user_review() -> None:
     payload = _payload([("Relevant professional background.", "other")])
 
@@ -361,6 +390,102 @@ def test_organizational_description_is_not_a_requirement() -> None:
 
     requirements = corrected["groups"][0]["paths"][0]["requirements"]
     assert [item["statement"] for item in requirements] == [qualification]
+
+
+def test_fresh_scan_reward_legal_and_recruiting_copy_is_removed() -> None:
+    rejected = [
+        "Additionally, Anduril offers top-tier benefits for full-time employees.",
+        "Minimum Salary",
+        "Zone 3: All other US locations: $116,000 - 159,500",
+        "Take the first step towards your dream career",
+        "Join us to build a future that works for everyone.",
+        "INCLUSION AND DIVERSITY AT KBR",
+        "Hewlett Packard Enterprise is EEO Protected Veteran/ Individual with "
+        "Disabilities.",
+        "We do not discriminate on the basis of any protected category.",
+        "We provide all team members with additional benefits.",
+        "Personal learning and development budget of USD 2,000 per year",
+        "Annual compensation review",
+        "Recognition rewards",
+    ]
+    qualification = "Five years of infrastructure experience required."
+    payload = _payload(
+        [(statement, "experience") for statement in [*rejected, qualification]]
+    )
+
+    corrected = apply_explicit_category_guardrails(payload)
+
+    requirements = corrected["groups"][0]["paths"][0]["requirements"]
+    assert [item["statement"] for item in requirements] == [qualification]
+
+
+def test_fresh_scan_role_descriptions_and_bulleted_duties_are_removed() -> None:
+    duties = [
+        "We’re hiring a Tax Director to help shape important initiatives.",
+        "In this role, you will:",
+        "- Serve as the lead tax advisor on complex arrangements.",
+        "- Evaluate tax and economic trade-offs.",
+        "- Help shape major commercial arrangements.",
+        "- Advise on structured finance transactions.",
+        "- Partner with legal teams on contracting matters.",
+        "- Translate tax considerations into practical positions.",
+        "Engage customers during presales to gather requirements.",
+        "Participate in the delivery of select projects.",
+        "Be part of a team that pushes boundaries.",
+        "Your expertise will shape the next generation of hardware experiences.",
+    ]
+    qualification = "Experience with structured finance is required."
+    payload = _payload(
+        [(statement, "skill") for statement in [*duties, qualification]]
+    )
+
+    corrected = apply_explicit_category_guardrails(payload)
+
+    requirements = corrected["groups"][0]["paths"][0]["requirements"]
+    assert [item["statement"] for item in requirements] == [qualification]
+
+
+def test_fresh_scan_section_headings_are_not_requirements() -> None:
+    headings = [
+        "Embedded Software:",
+        "Cybersecurity:",
+        "Preferred Knowledge and Skills:",
+        "Preferred Majors/Programs:",
+        "Hazardous Working Conditions/Environment",
+        "Beneficial Experience:",
+        "Desirable Requirements",
+        "Experience in the following areas/technologies:",
+    ]
+    qualification = "Knowledge of Linux."
+    payload = _payload(
+        [(statement, "skill") for statement in [*headings, qualification]]
+    )
+
+    corrected = apply_explicit_category_guardrails(payload)
+
+    requirements = corrected["groups"][0]["paths"][0]["requirements"]
+    assert [item["statement"] for item in requirements] == [qualification]
+
+
+def test_experience_requirement_ending_in_colon_is_not_treated_as_heading() -> None:
+    requirement = "5-8 years of hands-on QA experience, including:"
+
+    corrected = apply_explicit_category_guardrails(
+        _payload([(requirement, "experience")])
+    )
+
+    requirements = corrected["groups"][0]["paths"][0]["requirements"]
+    assert [item["statement"] for item in requirements] == [requirement]
+
+
+def test_explicit_travel_requirement_is_categorized_as_travel() -> None:
+    payload = _payload(
+        [("Ability and willingness to travel internationally.", "skill")]
+    )
+
+    corrected = apply_explicit_category_guardrails(payload)
+
+    assert _categories(corrected) == ["travel"]
 
 
 def test_carvana_marketing_and_rewards_are_not_applicant_requirements() -> None:

@@ -1,5 +1,6 @@
 import json
 from unittest.mock import patch
+from urllib.error import URLError
 
 import pytest
 
@@ -102,6 +103,32 @@ def test_ollama_adapter_requests_json_from_loopback() -> None:
     assert "evidence" not in requirement_schema["properties"]
     assert "<job_posting>" in sent["messages"][1]["content"]
     assert result == model_payload
+
+
+def test_ollama_adapter_starts_runtime_and_retries_failed_connection() -> None:
+    model_payload = {
+        "schema_version": "1",
+        "interpreter_version": "ollama-experiment-1",
+        "section_state": "not_stated",
+        "groups": [],
+    }
+    envelope = {"message": {"content": json.dumps(model_payload)}}
+    document = SourceDocument("job", DocumentKind.JOB_POSTING, "A job posting")
+
+    with (
+        patch(
+            "junior.infrastructure.ollama_qualification_backend.urlopen",
+            side_effect=[URLError("stopped"), FakeResponse(envelope)],
+        ),
+        patch(
+            "junior.infrastructure.ollama_qualification_backend."
+            "OllamaRuntimeManager.ensure_running"
+        ) as ensure_running,
+    ):
+        result = OllamaQualificationBackend().propose_job_qualifications(document)
+
+    ensure_running.assert_called_once_with()
+    assert result["section_state"] == "not_stated"
 
 
 def test_ollama_adapter_retries_one_unreadable_response() -> None:

@@ -286,3 +286,55 @@ def test_skill_requirement_can_use_exact_acronym_in_resume_experience() -> None:
 
     assert result.matches[0].state is ShadowMatchState.EVIDENCED
     assert result.matches[0].resume_evidence[0].category == "Experience"
+
+
+def test_deterministic_assessment_accepts_any_complete_alternative_path() -> None:
+    fixture = load_review_fixtures()[0]
+    first_group = fixture.groups[0]
+    first_requirement = first_group.paths[0].requirements[0]
+    second_requirement = first_group.paths[1].requirements[0]
+    job = replace(
+        fixture,
+        groups=(
+            QualificationGroupReview(
+                label="Required Alternative",
+                priority=RequirementPriority.REQUIRED,
+                paths=(
+                    QualificationPathReview("Degree path", (first_requirement,)),
+                    QualificationPathReview("Experience path", (second_requirement,)),
+                ),
+            ),
+        ),
+    )
+    resume = _resume_with(replace(second_requirement))
+
+    result = match_review_results(job, resume)
+
+    assert result.groups[0].paths[1].state is ShadowMatchState.EVIDENCED
+    assert result.groups[0].state is ShadowMatchState.EVIDENCED
+    assert result.required_state() is ShadowMatchState.EVIDENCED
+
+
+def test_preferred_failure_does_not_change_required_assessment() -> None:
+    fixture = load_review_fixtures()[1]
+    requirement = fixture.groups[0].paths[0].requirements[0]
+    job = replace(
+        fixture,
+        groups=(
+            QualificationGroupReview(
+                label="Required Skills",
+                priority=RequirementPriority.REQUIRED,
+                paths=(QualificationPathReview("Required", (requirement,)),),
+            ),
+            QualificationGroupReview(
+                label="Preferred Skills",
+                priority=RequirementPriority.PREFERRED,
+                paths=(QualificationPathReview("Preferred", (requirement,)),),
+            ),
+        ),
+    )
+    resume = _resume_with(replace(requirement))
+
+    result = match_review_results(job, resume)
+
+    assert result.required_state() is ShadowMatchState.EVIDENCED

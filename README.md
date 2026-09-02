@@ -7,13 +7,12 @@ The governing boundary is:
 
 > The model reads. The engine decides. The user remains in control.
 
-This repository currently contains the starting structure, evidence checks, and a
-native qualification-review experiment. It can display reviewed examples or ask
-a separately installed Ollama model to read a pasted job posting. Model output
-must pass Junior's strict record format and exact-quote checks before it appears.
-The Junior 1.x scoring engine is not connected. This is not yet the finished
-desktop application and does not contain migrated job-site connections, an
-upgrade process, or an installer.
+This repository now launches the native Junior application shell. The first
+production workflow persists a candidate profile, compensation preferences, and
+a private managed copy of a PDF, DOCX, or text résumé. The qualification-review
+Workbench remains available from the Tools menu as a developer diagnostic while
+the scan, jobs, deterministic scoring, and application-tracking workflows are
+migrated from Junior 1.x.
 
 ## Development
 
@@ -25,15 +24,59 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m junior
 ```
 
-Running `python -m junior` opens the native review experiment. Use the input picker
-to paste a complete job posting or inspect reviewed examples. The current local
-model trial expects Ollama at `http://127.0.0.1:11434` and defaults to
+Running `python -m junior` opens the native Junior application. The current local
+model adapter expects Ollama at `http://127.0.0.1:11434` and defaults to
 `qwen2.5:3b`. Ollama and the model are development prerequisites and are not
-bundled with Junior. Start Ollama and install that model with:
+bundled with Junior. Install that model once with:
 
 ```powershell
 ollama pull qwen2.5:3b
 ```
+
+Junior starts the installed Ollama service automatically when interpretation is
+requested; users do not need to launch it separately.
+
+On macOS, launch the native development workbench from the repository with:
+
+```bash
+cd /Users/claytongraves/dev/Junior
+.venv/bin/python -m junior
+```
+
+Junior stores profile and lifecycle records in its private application-data
+directory. The developer Workbench remembers only non-sensitive interface
+preferences; its ad hoc posting interpretations remain session-scoped.
+
+### Building a macOS application bundle
+
+Install the development dependencies, then build the self-contained `.app`:
+
+```bash
+.venv/bin/python -m pip install -e ".[dev]"
+.venv/bin/python -m junior.packaging.macos
+open "dist/Junior 2.0.app"
+```
+
+The command produces both `dist/Junior 2.0.app` and a versioned macOS DMG. Open
+the DMG and drag Junior onto its Applications shortcut to install it. The
+bundle contains Junior and its native Qt runtime. Ollama and `qwen2.5:3b` remain
+separate development prerequisites for this milestone, but Junior starts the
+installed Ollama service on demand. The build does not copy
+imported scans or resumes into the application. Development builds are not yet
+signed or notarized, so macOS may require **Control-click → Open** the first time.
+
+### Cross-platform releases
+
+Every distributable release must include Windows, macOS, and Linux packages. The
+repository provides `junior-build-windows`, `junior-build-macos`, and
+`junior-build-linux` commands for platform-local builds. The GitHub release
+workflow runs tests first, builds all three packages on their native GitHub-hosted
+runners, and retains them as downloadable workflow artifacts. Pushing a `v*` tag
+publishes a GitHub Release only after all three builds succeed; a failed or
+missing platform prevents a partial release.
+
+Current package formats are a Windows ZIP, macOS DMG, and Linux tar.gz. These are
+unsigned development packages until platform signing and notarization are added.
 
 The model only proposes qualifications and points to numbered source passages.
 Junior supplies the exact evidence text and positions, validates the completed

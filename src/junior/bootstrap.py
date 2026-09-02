@@ -4,7 +4,7 @@ from collections.abc import Sequence
 
 
 def run_application(arguments: Sequence[str] | None = None) -> int:
-    """Launch the current native review workspace."""
+    """Launch the native Junior application."""
 
     from junior.desktop.application import run_desktop_application
 

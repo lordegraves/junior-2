@@ -60,6 +60,14 @@ asks for JSON, the strict parser rejects missing or extra fields, and the eviden
 validator rejects quotes or locations that do not match the posting. Ollama is a
 development adapter, not yet the final bundled runtime decision.
 
+The user does not have to start Ollama manually. If the first loopback request
+finds the service stopped, Junior locates the installed command-line runtime or
+standard macOS Ollama application, starts it on `127.0.0.1:11434`, waits for its
+health endpoint, and retries the original request once. Junior still reports a
+clear error when Ollama or the configured model has never been installed. A
+future fully self-contained installer requires a separately reviewed runtime and
+model distribution decision.
+
 The adapter gives Ollama the same closed JSON structure that Junior validates
 afterward. This steers the model away from unsupported fields and values, but it
 does not replace Junior's independent parser or evidence checks.
@@ -210,6 +218,17 @@ version without erasing user-owned choices.
 The full path is: use a known catalog entry when available; otherwise discover
 the recruiting platform; select a migrated collector; collect public jobs; and
 confirm real jobs, complete details, and every results page before saving it.
+
+## Importing an existing Junior 1.x lifecycle
+
+Junior 2.0 owns a separate SQLite database in its native application-data
+directory. It never opens the active Junior 1.x database for writing and never
+uses that database as its live store. The native File menu can copy compatible
+companies, postings, scan runs, job history, and application-tracker rows through
+a read-only SQLite connection. The copy is transactional and fingerprinted, so
+an unchanged source is imported once and a failed import cannot leave a partial
+lifecycle behind. This boundary lets users validate the native 2.0 workflows
+without putting their working 1.x installation at risk.
 
 ## Resource and fallback behavior
 

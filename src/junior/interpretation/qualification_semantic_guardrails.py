@@ -266,6 +266,8 @@ def _explicit_category(statement: str) -> str | None:
     )
     if any(term in lowered for term in education_terms):
         return "education"
+    if re.search(r"\b(?:travel|willingness to travel)\b", lowered):
+        return "travel"
     physical_terms = (
         "physically demanding",
         "walk/stand",
@@ -369,6 +371,52 @@ def _is_non_qualification_context(
     statement = " ".join(_evidence_text(requirement).casefold().split())
     if not statement:
         return False
+    semantic_start = statement.lstrip("•*-–— ")
+    section = _source_section_at(requirement, source_content)
+
+    if section in {"rewards", "legal"}:
+        return True
+
+    # Legal, compensation, and employee-reward statements can contain words
+    # such as experience, education, or qualification without asking anything
+    # of an applicant.
+    if any(
+        phrase in statement
+        for phrase in (
+            "equal opportunity employer",
+            "equal employment opportunity",
+            "all qualified applicants will receive consideration",
+            "do not discriminate on the basis",
+            "we do not discriminate",
+            "protected veteran",
+            "protected characteristic",
+            "know your rights",
+            "inclusion and diversity",
+            "diversity and inclusion",
+            "reasonable accommodation",
+            "employee assistance program",
+            "business travel insurance",
+            "employee benefits",
+            "additional benefits",
+            "top-tier benefits",
+            "eligible for benefits",
+            "compensation annually",
+            "compensation worldwide",
+            "annual compensation review",
+            "performance-driven annual bonus",
+            "salary offer may vary",
+            "minimum salary",
+            "embody our culture and values qualifications",
+            "hardware and software technologies that power all of google's services",
+        )
+    ):
+        return True
+    money = r"(?:\$\s?\d[\d,]*|\b\d{2,3},\d{3}\b)"
+    reward = r"(?:salary|compensation|pay|zone\s+\d)"
+    if re.search(rf"{money}.{{0,80}}{reward}", statement) or re.search(
+        rf"{reward}.{{0,80}}{money}", statement
+    ):
+        return True
 
     # These are descriptions of the employer, opportunity, or employee reward,
     # not facts an applicant must bring or satisfy.
@@ -384,6 +432,12 @@ def _is_non_qualification_context(
             "significant growth opportunities based on performance",
             "merit opportunities annually",
             "invest in our team members",
+            "take the first step towards your dream career",
+            "join us to build a future",
+            "we would love to hear from you",
+            "we want to hear from you",
+            "only a 45-minute flight",
+            "serviced by the convenient",
         )
     ):
         return True
@@ -393,14 +447,27 @@ def _is_non_qualification_context(
     # education or experience, so reject prose whose subject is the employer,
     # its products, or the field rather than the applicant.
     if re.match(
-        r"(?i)^(?:at\s+[^,]{1,80},\s+we\s+(?:are|build|develop|use)|"
-        r"we\s+(?:are|build|develop|use)\s+(?:our\s+)?(?:technolog|product)|"
+        r"(?i)^(?:at\s+[^,]{1,80},\s+(?:we\s+(?:are|build|develop|use)|our\s+mission\b)|"
+        r"we\s+(?:are|build|continue|develop|foster|have|operate|push|use)\b|"
         r"our\s+(?:company|mission|products?|technologies|teams?)\b|"
+        r"our\s+(?:laboratory|global teams?|culture)\b|"
         r"(?:[a-z][a-z0-9&./+-]{1,12}\s+)?includes\s+the\s+"
         r"(?:commercial\s+)?(?:arms?|teams?|groups?|organizations?)\b|"
-        r"(?:artificial intelligence|machine learning|the company|the industry)\s+"
+        r"(?:ai|artificial intelligence|machine learning|the company|the industry)\s+"
         r"(?:is|are|will|has|have)\b)",
         statement,
+    ):
+        return True
+
+    # Role descriptions and second-person promises describe future work. They
+    # are not qualifications even when the model assigns a plausible category.
+    if re.match(
+        r"(?i)^(?:as\s+(?:a|an|the)\b.{0,80}\byou will\b|"
+        r"be part of\b|in this role,?\s+you will\b|"
+        r"responsibilities\b|"
+        r"you will\b|your (?:expertise|work) will\b|"
+        r"we(?:'|’)re hiring\b|we are hiring\b|if you are someone\b)",
+        semantic_start,
     ):
         return True
 
@@ -411,18 +478,32 @@ def _is_non_qualification_context(
             r"(?i)\b(?:candidates? must|must be|must have|required|requires?|"
             r"at least \d+\s+years?|ability to|proficiency|familiarity|"
             r"knowledge of|experience (?:in|with)|license|certification)\b",
-            statement,
+            semantic_start,
         )
     )
     duty_opening = re.match(
-        r"(?i)^(?:act as|align|analy[sz]e|build|complete|consistently drive|"
-        r"coordinate|create|cultivate|define|deliver|design|develop|drive|"
-        r"establish|execute|frequently load|implement|improve|influence|inspect|"
-        r"lead|load|manage|monitor|operate|own|partner with|perform|provide|"
-        r"secure|serve as|support|synthesize|transport|unload|work with)\b",
-        statement,
+        r"(?i)^(?:act as|advise|align|analy[sz]e|be both|build|complete|"
+        r"consistently drive|convey|coordinate|coordinating|create|cultivate|"
+        r"define|deliver|"
+        r"design|develop|drive|elaborate|engage|establish|evaluate|execute|"
+        r"frequently load|help shape|implement|improve|improving|influence|"
+        r"inspect|lead|leverage|"
+        r"load|manage|monitor|operate|own|participate|"
+        r"partner (?:closely )?with|perform|"
+        r"provide|secure|serve as|support|synthesize|translate|transport|unload|"
+        r"work with)\b",
+        semantic_start,
     )
     if duty_opening and not has_requirement_language:
+        return True
+    if any(
+        phrase in statement
+        for phrase in (
+            "we balance our programs to meet local needs",
+            "distributed work environment with twice-yearly team sprints",
+            "opportunity to travel to new locations to meet colleagues",
+        )
+    ):
         return True
     return False
 
@@ -446,14 +527,19 @@ def _source_section_at(
         (
             "rewards",
             r"(?:benefits?(?:\s*[+&]\s*perks)?|"
-            r"unlock your earning potential|compensation)",
+            r"unlock your earning potential|compensation|total rewards|"
+            r"salary range|minimum salary|pay range)",
         ),
         (
             "qualifications",
             r"(?:general qualifications? and requirements?|"
             r"minimum|required|preferred qualifications?)",
         ),
-        ("legal", r"(?:legal stuff|equal employment opportunity)"),
+        (
+            "legal",
+            r"(?:legal stuff|equal employment opportunity|"
+            r"inclusion and diversity|diversity and inclusion)",
+        ),
     )
     for match in re.finditer(r"(?m)^\s*([^\r\n]{1,100})\s*$", source_content):
         line = match.group(1).strip(" :")
@@ -763,7 +849,18 @@ def _is_location_conditional(statement: str) -> bool:
 
 
 def _is_boilerplate(statement: str) -> bool:
-    lowered = " ".join(statement.casefold().split()).strip(" :.-")
+    compact = " ".join(statement.casefold().split())
+    lowered = compact.strip(" :.-")
+    if (
+        statement.strip().endswith(":")
+        and len(lowered.split()) <= 10
+        and not re.search(
+            r"\b(?:must|required|requires?|experience|degree|"
+            r"ability to|knowledge of|proficiency|familiarity)\b",
+            lowered,
+        )
+    ):
+        return True
     if lowered in {
         "legal",
         "legal stuff",
@@ -780,6 +877,15 @@ def _is_boilerplate(statement: str) -> bool:
         "experience",
         "education",
         "certifications",
+        "beneficial experience",
+        "desirable requirements",
+        "embedded software",
+        "cybersecurity",
+        "preferred knowledge and skills",
+        "preferred majors/programs",
+        "hazardous working conditions/environment",
+        "in this role, you will",
+        "experience in the following areas/technologies",
     }:
         return True
     if "$" in statement and any(
@@ -837,6 +943,14 @@ def _is_boilerplate(statement: str) -> bool:
             "paid healthcare premiums",
             "retirement savings",
             "employee benefits",
+            "employee assistance program",
+            "business travel insurance",
+            "annual holiday leave",
+            "recognition rewards",
+            "personal learning and development budget",
+            "annual compensation review",
+            "performance-driven annual bonus",
+            "minimum salary",
             "committed to attracting, retaining, and developing",
             "hires and promotes people on the basis",
             "workplace that fosters trust, equality, and teamwork",

@@ -10,6 +10,10 @@ from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 from junior.domain.documents import SourceDocument
+from junior.infrastructure.ollama_runtime import (
+    OllamaRuntimeError,
+    OllamaRuntimeManager,
+)
 from junior.interpretation.qualification_evidence_passages import (
     QualificationEvidencePassage,
     QualificationEvidencePassageError,
@@ -212,6 +216,16 @@ class OllamaQualificationBackend:
             method="POST",
         )
         try:
+            return self._read_response(request)
+        except (URLError, OSError) as initial_error:
+            try:
+                OllamaRuntimeManager(endpoint=self.endpoint).ensure_running()
+                return self._read_response(request)
+            except (OllamaRuntimeError, URLError, OSError) as exc:
+                raise LocalModelUnavailableError(str(exc)) from initial_error
+
+    def _read_response(self, request: Request) -> dict[str, Any]:
+        try:
             with urlopen(request, timeout=self.timeout_seconds) as response:
                 envelope = json.loads(response.read().decode("utf-8"))
             content = envelope["message"]["content"]
@@ -221,10 +235,10 @@ class OllamaQualificationBackend:
                 "The local model did not finish within five minutes. The posting "
                 "was not interpreted and the scoring engine was not run."
             ) from exc
-        except (HTTPError, URLError, OSError) as exc:
+        except HTTPError as exc:
             raise LocalModelUnavailableError(
-                "Junior could not reach the local model. Start Ollama and make "
-                f"sure the {self.model_id} model is installed."
+                f"Ollama could not run {self.model_id}. "
+                "Make sure that model is installed."
             ) from exc
         except (KeyError, TypeError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise _UnreadableModelResponseError from exc

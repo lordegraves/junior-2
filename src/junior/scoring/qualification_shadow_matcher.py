@@ -29,11 +29,41 @@ class ShadowRequirementMatch:
 
 
 @dataclass(frozen=True, slots=True)
+class ShadowPathAssessment:
+    label: str
+    state: ShadowMatchState
+
+
+@dataclass(frozen=True, slots=True)
+class ShadowGroupAssessment:
+    label: str
+    priority: str
+    state: ShadowMatchState
+    paths: tuple[ShadowPathAssessment, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class ShadowMatchResult:
     matches: tuple[ShadowRequirementMatch, ...]
+    groups: tuple[ShadowGroupAssessment, ...]
 
     def count(self, state: ShadowMatchState) -> int:
         return sum(match.state is state for match in self.matches)
+
+    def required_state(self) -> ShadowMatchState:
+        required = tuple(
+            group
+            for group in self.groups
+            if group.priority == "required"
+            and group.label != "Conditional Location Requirements"
+        )
+        if not required:
+            return ShadowMatchState.NEEDS_REVIEW
+        if any(group.state is ShadowMatchState.NOT_FOUND for group in required):
+            return ShadowMatchState.NOT_FOUND
+        if all(group.state is ShadowMatchState.EVIDENCED for group in required):
+            return ShadowMatchState.EVIDENCED
+        return ShadowMatchState.NEEDS_REVIEW
 
 
 def match_review_results(
@@ -56,13 +86,17 @@ def match_review_results(
         for requirement in path.requirements
     )
     matches: list[ShadowRequirementMatch] = []
+    assessments: list[ShadowGroupAssessment] = []
     for group in job.groups:
         conditional = group.label == "Conditional Location Requirements"
+        path_assessments: list[ShadowPathAssessment] = []
         for path in group.paths:
+            path_states: list[ShadowMatchState] = []
             for requirement in path.requirements:
                 state, evidence, reason = _match_requirement(
                     requirement, resume_items, conditional
                 )
+                path_states.append(state)
                 matches.append(
                     ShadowRequirementMatch(
                         requirement=requirement,
@@ -74,7 +108,38 @@ def match_review_results(
                         reason=reason,
                     )
                 )
-    return ShadowMatchResult(tuple(matches))
+            path_assessments.append(
+                ShadowPathAssessment(path.label, _path_state(path_states))
+            )
+        assessments.append(
+            ShadowGroupAssessment(
+                label=group.label,
+                priority=group.priority.value,
+                state=_group_state(path_assessments),
+                paths=tuple(path_assessments),
+            )
+        )
+    return ShadowMatchResult(tuple(matches), tuple(assessments))
+
+
+def _path_state(states: list[ShadowMatchState]) -> ShadowMatchState:
+    if not states:
+        return ShadowMatchState.NEEDS_REVIEW
+    if all(state is ShadowMatchState.EVIDENCED for state in states):
+        return ShadowMatchState.EVIDENCED
+    if any(state is ShadowMatchState.NOT_FOUND for state in states):
+        return ShadowMatchState.NOT_FOUND
+    return ShadowMatchState.NEEDS_REVIEW
+
+
+def _group_state(paths: list[ShadowPathAssessment]) -> ShadowMatchState:
+    if not paths:
+        return ShadowMatchState.NEEDS_REVIEW
+    if any(path.state is ShadowMatchState.EVIDENCED for path in paths):
+        return ShadowMatchState.EVIDENCED
+    if all(path.state is ShadowMatchState.NOT_FOUND for path in paths):
+        return ShadowMatchState.NOT_FOUND
+    return ShadowMatchState.NEEDS_REVIEW
 
 
 def _match_requirement(

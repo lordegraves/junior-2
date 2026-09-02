@@ -5,7 +5,7 @@ from collections.abc import Callable
 from pathlib import Path
 from threading import Event
 
-from PySide6.QtCore import QObject, Qt, QThread, Signal, Slot
+from PySide6.QtCore import QObject, QSettings, Qt, QThread, Signal, Slot
 from PySide6.QtGui import QCloseEvent, QColor, QTextCharFormat, QTextCursor
 from PySide6.QtWidgets import (
     QComboBox,
@@ -40,6 +40,10 @@ from junior.application.review_workspace import (
     RequirementReview,
     ReviewValidationState,
     ReviewWorkspaceResult,
+)
+from junior.infrastructure.application_database import (
+    LegacyDatabaseError,
+    import_legacy_database,
 )
 from junior.infrastructure.ollama_qualification_backend import (
     LocalModelUnavailableError,
@@ -164,6 +168,8 @@ class QualificationReviewWindow(QMainWindow):
         fixtures: tuple[ReviewWorkspaceResult, ...],
         interpretation_runner: InterpretationRunner | None = None,
         resume_interpretation_runner: ResumeInterpretationRunner | None = None,
+        settings: QSettings | None = None,
+        database_path: str | Path | None = None,
     ) -> None:
         super().__init__()
         if not fixtures:
@@ -173,6 +179,8 @@ class QualificationReviewWindow(QMainWindow):
         self._current_source_uri: str | None = None
         self._interpretation_runner = interpretation_runner
         self._resume_interpretation_runner = resume_interpretation_runner
+        self._settings = settings
+        self._database_path = Path(database_path) if database_path is not None else None
         self._input_kind = "job"
         self._resume_filename = "Resume"
         self._worker_thread: QThread | None = None
@@ -186,19 +194,82 @@ class QualificationReviewWindow(QMainWindow):
         self._latest_job_result: ReviewWorkspaceResult | None = None
         self._latest_resume_result: ReviewWorkspaceResult | None = None
         self._current_result: ReviewWorkspaceResult | None = None
-        self.setWindowTitle("Junior 2.0 — Qualification Review")
+        self.setWindowTitle("Junior 2.0 — Review Workbench")
         self.resize(1280, 800)
         self.setMinimumSize(900, 620)
         self._build_menu()
         self._build_workspace(fixtures)
+        self._restore_preferences()
         self._show_interactive_workspace()
+
+    def load_posting(
+        self,
+        *,
+        company: str,
+        title: str,
+        content: str,
+        source_uri: str | None = None,
+    ) -> None:
+        """Load one persisted job into the evidence-review workflow."""
+
+        self._show_interactive_workspace()
+        self._input_kind = "job"
+        self.company_input.setText(company)
+        self.title_input.setText(title)
+        self.source_text.setPlainText(content)
+        self._current_source_uri = source_uri
+        self.job_heading.setText(f"{company} — {title}")
+        self.interpretation_status.setText(
+            "Saved job loaded. Select Interpret posting to extract qualifications."
+        )
+
+    def _restore_preferences(self) -> None:
+        if self._settings is None:
+            return
+        model_name = self._settings.value("interpretation/model_name", "qwen2.5:3b")
+        if isinstance(model_name, str) and model_name.strip():
+            self.model_input.setText(model_name.strip())
+        geometry = self._settings.value("window/geometry")
+        if geometry is not None:
+            self.restoreGeometry(geometry)
 
     def _build_menu(self) -> None:
         file_menu = QMenu("&File", self)
+        self.import_legacy_action = file_menu.addAction("Import Junior &1.x data…")
+        self.import_legacy_action.setEnabled(self._database_path is not None)
+        self.import_legacy_action.triggered.connect(self._import_legacy_data)
+        file_menu.addSeparator()
         exit_action = file_menu.addAction("E&xit")
         exit_action.setShortcut("Ctrl+Q")
         exit_action.triggered.connect(self.close)
         self.menuBar().addMenu(file_menu)
+
+    @Slot()
+    def _import_legacy_data(self) -> None:
+        if self._database_path is None:
+            return
+        source_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Import Junior 1.x data",
+            "",
+            "SQLite databases (*.sqlite *.sqlite3 *.db);;All files (*)",
+        )
+        if not source_path:
+            return
+        try:
+            summary = import_legacy_database(source_path, self._database_path)
+        except LegacyDatabaseError as error:
+            self.statusBar().showMessage(str(error))
+            return
+        if not summary.imported:
+            self.statusBar().showMessage(
+                "That unchanged Junior 1.x database was already imported."
+            )
+            return
+        total = sum(count for _, count in summary.table_counts)
+        self.statusBar().showMessage(
+            f"Imported {total} profile-lifecycle records into Junior 2.0."
+        )
 
     def _build_workspace(
         self,
@@ -209,7 +280,7 @@ class QualificationReviewWindow(QMainWindow):
         outer.setContentsMargins(20, 16, 20, 20)
         outer.setSpacing(12)
 
-        title = QLabel("Qualification Review")
+        title = QLabel("Junior 2.0 Review Workbench")
         title.setObjectName("pageTitle")
         title.setAccessibleName("Qualification Review")
         outer.addWidget(title)
@@ -801,6 +872,12 @@ class QualificationReviewWindow(QMainWindow):
             )
             event.ignore()
             return
+        if self._settings is not None:
+            self._settings.setValue(
+                "interpretation/model_name", self.model_input.text().strip()
+            )
+            self._settings.setValue("window/geometry", self.saveGeometry())
+            self._settings.sync()
         super().closeEvent(event)
 
     def _load_fixture(self, result: ReviewWorkspaceResult) -> None:
@@ -891,8 +968,15 @@ class QualificationReviewWindow(QMainWindow):
         evidenced = result.count(ShadowMatchState.EVIDENCED)
         not_found = result.count(ShadowMatchState.NOT_FOUND)
         needs_review = result.count(ShadowMatchState.NEEDS_REVIEW)
+        required_labels = {
+            ShadowMatchState.EVIDENCED: "all required paths evidenced",
+            ShadowMatchState.NOT_FOUND: "one or more required paths not evidenced",
+            ShadowMatchState.NEEDS_REVIEW: "required paths need review",
+        }
         self.engine_message.setText(
-            "Shadow comparison only — no recommendation or omission was made. "
+            "Deterministic shadow assessment — "
+            f"{required_labels[result.required_state()]}. "
+            "No recommendation or omission was made. "
             f"{evidenced} evidenced, {not_found} not found, "
             f"{needs_review} need review."
         )

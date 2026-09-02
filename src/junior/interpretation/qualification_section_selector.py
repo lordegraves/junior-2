@@ -13,6 +13,7 @@ _EXPLICIT_START_PATTERNS = (
     re.compile(r"(?im)^.*\bwhat we need to see\b.*$"),
     re.compile(r"(?im)^.*\bexperience,? education,? skills,? abilities\b.*$"),
     re.compile(r"(?im)^.*\bwhat you(?:'|’)ll (?:need|bring)\b.*$"),
+    re.compile(r"(?im)^.*\bwhat you bring\b.*$"),
 )
 _FALLBACK_START_PATTERNS = (
     re.compile(
@@ -26,19 +27,23 @@ _FALLBACK_START_PATTERNS = (
 )
 _END_PATTERN = re.compile(
     r"(?im)^(?:benefits?(?:\s*[+&]\s*perks)?|compensation(?:\s*[+&]\s*benefits)?|"
-    r"what (?:we|the company) (?:offer|provides?)|company information|"
+    r"what (?:we|the company) (?:can )?(?:offer|provides?)(?: you)?|"
+    r"company information|"
     r"why (?:join|work (?:at|with))\b.*|total rewards(?: at .*)?|"
     r"our identity verification process|about our work|"
     r"about (?:us|the company|our company)|equal employment opportunity|"
+    r"equal opportunity employer|inclusion and diversity|diversity and inclusion|"
     r"affirmative action|application instructions?|how to apply|"
     r"applications? for this job|this posting is for an existing vacancy|"
     r".*uses ai tools? in (?:its|the) recruiting process(?:es)?|"
     r"job description|responsibilities(?: include| and duties)?|"
     r"similar searchable job titles|keywords|your base salary|salary range|"
+    r"minimum salary|pay range|actual salary offer|"
     r"you will also be eligible for (?:equity|benefits)|"
     r"widely considered to be one of|applications? will be accepted|"
     r"at .{1,80}, we (?:are|have|believe|use)|"
-    r"we are pushing the boundaries|our global teams)\s*:?.*$"
+    r"we are pushing the boundaries|we push the boundaries|"
+    r"we continue to expand|our global teams|our laboratory is committed)\s*:?.*$"
 )
 
 

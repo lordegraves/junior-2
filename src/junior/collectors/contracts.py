@@ -37,6 +37,8 @@ class CollectedJob:
     location: str | None
     posting_url: str
     description: str | None
+    remote_status: str | None = None
+    salary_text: str | None = None
 
     def __post_init__(self) -> None:
         required = {

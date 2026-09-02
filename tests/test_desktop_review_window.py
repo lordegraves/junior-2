@@ -85,6 +85,31 @@ def test_interactive_workspace_requires_posting_text() -> None:
     window.close()
 
 
+def test_native_file_menu_imports_legacy_data_into_2_database(tmp_path) -> None:
+    _application()
+    destination = tmp_path / "junior-2.sqlite3"
+    window = QualificationReviewWindow(
+        load_review_fixtures(), database_path=destination
+    )
+
+    with (
+        patch.object(QFileDialog, "getOpenFileName", return_value=("legacy.db", "")),
+        patch(
+            "junior.desktop.review_window.import_legacy_database"
+        ) as import_database,
+    ):
+        from junior.domain.lifecycle import LegacyImportSummary
+
+        import_database.return_value = LegacyImportSummary(
+            "legacy.db", True, (("job_postings", 3), ("scan_runs", 1))
+        )
+        window.import_legacy_action.trigger()
+
+    import_database.assert_called_once_with("legacy.db", destination)
+    assert "4 profile-lifecycle records" in window.statusBar().currentMessage()
+    window.close()
+
+
 def test_interactive_workspace_runs_off_the_ui_thread() -> None:
     app = _application()
     expected = load_review_fixtures()[2]
@@ -309,7 +334,9 @@ def test_window_runs_non_authoritative_shadow_match() -> None:
 
     assert not window.shadow_match_tree.isHidden()
     assert window.shadow_match_tree.topLevelItemCount() > 0
-    assert "no recommendation or omission" in window.engine_message.text().casefold()
+    message = window.engine_message.text().casefold()
+    assert "deterministic shadow assessment" in message
+    assert "no recommendation or omission" in message
     window.close()
 
 

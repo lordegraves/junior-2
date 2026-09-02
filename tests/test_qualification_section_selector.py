@@ -140,3 +140,40 @@ def test_selector_excludes_pay_and_benefits_between_qualification_blocks() -> No
     assert "HPC experience is a plus" in selected
     assert "base salary" not in selected
     assert "equity and benefits" not in selected
+
+
+def test_selector_stops_at_fresh_scan_reward_and_legal_headings() -> None:
+    content = (
+        "Minimum Qualifications:\nFive years of experience.\n"
+        "Preferred Qualifications:\nKnowledge of Linux.\n"
+        "Minimum Salary\n$100,000\n"
+        "Inclusion and Diversity\nLegal material."
+    )
+
+    selected = select_qualification_passage(content)
+
+    assert selected == (
+        "Minimum Qualifications:\nFive years of experience.\n"
+        "Preferred Qualifications:\nKnowledge of Linux."
+    )
+
+
+def test_selector_reads_hpe_what_you_bring_and_stops_before_benefits() -> None:
+    content = (
+        "What You'll Do\nDesign and execute tests.\n"
+        "What You Bring\nTechnical Expertise\n"
+        "5-8 years of hands-on QA experience.\n"
+        "Strong coding skills in Python.\n"
+        "Education\nBS/MS degree in Science or Engineering.\n"
+        "What We Can Offer You:\nHealth & Wellbeing\nBenefits material.\n"
+        "HPE makes decisions based on qualifications and merit."
+    )
+
+    selected = select_qualification_passage(content)
+
+    assert selected == (
+        "What You Bring\nTechnical Expertise\n"
+        "5-8 years of hands-on QA experience.\n"
+        "Strong coding skills in Python.\n"
+        "Education\nBS/MS degree in Science or Engineering."
+    )

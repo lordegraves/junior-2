@@ -1,0 +1,79 @@
+name: Build and release Junior
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: python -m pip install -e ".[dev]"
+      - run: python -m pytest -q
+      - run: python -m ruff check src tests
+
+  build:
+    name: Build ${{ matrix.platform }}
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: Windows
+            runner: windows-latest
+            command: junior-build-windows
+            artifact: dist/Junior-2.0-Windows-x86_64-Setup.exe
+          - platform: macOS
+            runner: macos-14
+            command: junior-build-macos
+            artifact: dist/Junior-2.0-macOS-*.dmg
+          - platform: Linux
+            runner: ubuntu-22.04
+            command: junior-build-linux
+            artifact: dist/Junior-2.0-Linux-*.deb
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: python -m pip install -e ".[dev]"
+      - if: runner.os == 'Windows'
+        run: choco install innosetup --no-progress -y
+      - run: ${{ matrix.command }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Junior-2.0-${{ matrix.platform }}
+          path: ${{ matrix.artifact }}
+          if-no-files-found: error
+
+  release:
+    name: Publish complete release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: Junior-2.0-*
+          path: release-artifacts
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: release-artifacts/*
+          fail_on_unmatched_files: true
+          generate_release_notes: true
