@@ -16,6 +16,21 @@ class EmailSendResult:
     message: str
 
 
+def test_email_connection(settings: dict[str, object]) -> EmailSendResult:
+    """Authenticate to SMTP without sending or retaining a message."""
+    password_env = str(settings.get("smtp_password_env") or "")
+    password = os.environ.get(password_env)
+    if not password:
+        return EmailSendResult(
+            False, f"Email password environment variable is not set: {password_env}"
+        )
+    try:
+        _connect(settings, password)
+    except (KeyError, OSError, smtplib.SMTPException, ValueError) as error:
+        return EmailSendResult(False, f"Email connection failed: {error}")
+    return EmailSendResult(True, "Email connection and authentication succeeded.")
+
+
 def send_email_report(
     settings: dict[str, object],
     subject: str,
@@ -75,14 +90,30 @@ def _build_message(
 
 
 def _send(settings: dict[str, object], message: EmailMessage, password: str) -> None:
+    with _smtp_connection(settings, password) as smtp:
+        smtp.send_message(message)
+
+
+def _connect(settings: dict[str, object], password: str) -> None:
+    with _smtp_connection(settings, password):
+        pass
+
+
+def _smtp_connection(settings: dict[str, object], password: str):
     host = str(settings["smtp_host"])
     port = int(settings["smtp_port"])
+    if not host:
+        raise ValueError("SMTP host is required.")
     mode = str(settings.get("smtp_tls_mode") or "starttls")
     if mode not in {"starttls", "ssl", "none"}:
         raise ValueError("SMTP TLS mode must be starttls, ssl, or none.")
     smtp_type = smtplib.SMTP_SSL if mode == "ssl" else smtplib.SMTP
-    with smtp_type(host, port) as smtp:
+    smtp = smtp_type(host, port, timeout=10)
+    try:
         if mode == "starttls":
             smtp.starttls()
         smtp.login(str(settings["smtp_username"]), password)
-        smtp.send_message(message)
+    except Exception:
+        smtp.close()
+        raise
+    return smtp

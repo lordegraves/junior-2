@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import secrets
 import sqlite3
 from pathlib import Path
 
@@ -52,8 +53,42 @@ CREATE TABLE IF NOT EXISTS candidate_profiles (
     credible_adjacent_json TEXT NOT NULL DEFAULT '[]',
     learning_or_gap_json TEXT NOT NULL DEFAULT '[]',
     avoid_json TEXT NOT NULL DEFAULT '[]',
+    target_roles_json TEXT NOT NULL DEFAULT '[]',
+    seniority_levels_json TEXT NOT NULL DEFAULT '[]',
+    preferred_locations_json TEXT NOT NULL DEFAULT '[]',
+    location_radius_miles INTEGER NOT NULL DEFAULT 25,
+    work_arrangements_json TEXT NOT NULL DEFAULT '[]',
+    employment_types_json TEXT NOT NULL DEFAULT '[]',
+    schedule_preference TEXT NOT NULL DEFAULT 'Any schedule',
+    on_call_preference TEXT NOT NULL DEFAULT 'Review each job',
+    clearance_preference TEXT NOT NULL DEFAULT 'Review each job',
+    travel_tolerance INTEGER,
+    include_strong_location_outliers INTEGER NOT NULL DEFAULT 0,
+    fit_signals_json TEXT NOT NULL DEFAULT '[]',
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS active_profile_selection (
+    singleton_id INTEGER PRIMARY KEY CHECK(singleton_id = 1),
+    profile_id TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS role_discovery_suggestions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    profile_id TEXT NOT NULL,
+    suggested_title TEXT NOT NULL,
+    normalized_title TEXT NOT NULL,
+    employer_context TEXT,
+    context_key TEXT NOT NULL,
+    explanation TEXT NOT NULL,
+    evidence_json TEXT NOT NULL DEFAULT '[]',
+    feedback_state TEXT NOT NULL DEFAULT 'pending',
+    reviewed_at TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(profile_id, normalized_title, context_key)
 );
 
 CREATE TABLE IF NOT EXISTS companies (
@@ -127,6 +162,7 @@ CREATE TABLE IF NOT EXISTS report_exports (
 
 CREATE TABLE IF NOT EXISTS scan_runs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    profile_id TEXT,
     generated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, finished_at TEXT,
     status TEXT NOT NULL DEFAULT 'completed', companies_requested INTEGER NOT NULL DEFAULT 0,
@@ -143,6 +179,22 @@ CREATE TABLE IF NOT EXISTS scan_errors (
     id INTEGER PRIMARY KEY AUTOINCREMENT, scan_run_id INTEGER, company_key TEXT,
     source_type TEXT, error_type TEXT NOT NULL, error_message TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS company_source_health (
+    company_key TEXT PRIMARY KEY, state TEXT NOT NULL, message TEXT NOT NULL,
+    jobs_found INTEGER, checked_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS role_discovery_suggestions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, profile_id TEXT NOT NULL,
+    suggested_title TEXT NOT NULL, normalized_title TEXT NOT NULL,
+    employer_context TEXT, context_key TEXT NOT NULL,
+    explanation TEXT NOT NULL, evidence_json TEXT NOT NULL DEFAULT '[]',
+    feedback_state TEXT NOT NULL DEFAULT 'pending', reviewed_at TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(profile_id, normalized_title, context_key)
 );
 
 CREATE TABLE IF NOT EXISTS job_seen_events (
@@ -194,6 +246,7 @@ def initialize_database(database_path: str | Path) -> Path:
         _migrate_company_columns(connection)
         _migrate_interpretation_columns(connection)
         _migrate_evaluation_columns(connection)
+        _migrate_scan_run_columns(connection)
         connection.execute(
             "INSERT OR REPLACE INTO schema_metadata(key, value) VALUES('schema_version', '2')"
         )
@@ -270,15 +323,26 @@ def list_applications(database_path: str | Path) -> tuple[ApplicationRecord, ...
 
 
 def get_candidate_profile(
-    database_path: str | Path, profile_id: str = "default"
+    database_path: str | Path, profile_id: str | None = None
 ) -> CandidateProfile | None:
     with sqlite3.connect(database_path) as connection:
         connection.row_factory = sqlite3.Row
+        if profile_id is None:
+            selected = connection.execute(
+                "SELECT profile_id FROM active_profile_selection WHERE singleton_id = 1"
+            ).fetchone()
+            profile_id = str(selected[0]) if selected else "default"
         row = connection.execute(
             """SELECT profile_id, name, compensation_floor_usd,
                       preferred_base_usd, resume_source_path,
                       resume_normalized_text_path, core_strengths_json,
-                      credible_adjacent_json, learning_or_gap_json, avoid_json
+                      credible_adjacent_json, learning_or_gap_json, avoid_json,
+                      target_roles_json, seniority_levels_json,
+                      preferred_locations_json, location_radius_miles,
+                      work_arrangements_json,
+                      employment_types_json, schedule_preference,
+                      on_call_preference, clearance_preference, travel_tolerance,
+                      include_strong_location_outliers, fit_signals_json
                FROM candidate_profiles WHERE profile_id = ?""",
             (profile_id,),
         ).fetchone()
@@ -296,6 +360,28 @@ def get_candidate_profile(
         credible_adjacent=_decode_string_list(values["credible_adjacent_json"]),
         learning_or_gap=_decode_string_list(values["learning_or_gap_json"]),
         avoid=_decode_string_list(values["avoid_json"]),
+        target_roles=_decode_string_list(values["target_roles_json"]),
+        seniority_levels=_decode_string_list(values["seniority_levels_json"]),
+        preferred_locations=_decode_string_list(values["preferred_locations_json"]),
+        location_radius_miles=values["location_radius_miles"],
+        work_arrangements=_decode_string_list(values["work_arrangements_json"]),
+        employment_types=_decode_string_list(values["employment_types_json"]),
+        schedule_preference=values["schedule_preference"],
+        on_call_preference=values["on_call_preference"],
+        clearance_preference=values["clearance_preference"],
+        travel_tolerance=values["travel_tolerance"],
+        include_strong_location_outliers=bool(
+            values["include_strong_location_outliers"]
+        ),
+        fit_signals=tuple(
+            (
+                str(item[0]),
+                str(item[1]),
+                str(item[2]) if len(item) > 2 else "",
+            )
+            for item in json.loads(values["fit_signals_json"] or "[]")
+            if isinstance(item, list) and len(item) in {2, 3}
+        ),
     )
 
 
@@ -310,8 +396,14 @@ def save_candidate_profile(
                    profile_id, name, compensation_floor_usd, preferred_base_usd,
                    resume_source_path, resume_normalized_text_path,
                    core_strengths_json, credible_adjacent_json,
-                   learning_or_gap_json, avoid_json
-               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                   learning_or_gap_json, avoid_json, target_roles_json,
+                   seniority_levels_json, preferred_locations_json,
+                   location_radius_miles,
+                   work_arrangements_json, employment_types_json,
+                   schedule_preference, on_call_preference, clearance_preference,
+                   travel_tolerance, include_strong_location_outliers,
+                   fit_signals_json
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                ON CONFLICT(profile_id) DO UPDATE SET
                    name = excluded.name,
                    compensation_floor_usd = excluded.compensation_floor_usd,
@@ -322,6 +414,18 @@ def save_candidate_profile(
                    credible_adjacent_json = excluded.credible_adjacent_json,
                    learning_or_gap_json = excluded.learning_or_gap_json,
                    avoid_json = excluded.avoid_json,
+                   target_roles_json = excluded.target_roles_json,
+                   seniority_levels_json = excluded.seniority_levels_json,
+                   preferred_locations_json = excluded.preferred_locations_json,
+                   location_radius_miles = excluded.location_radius_miles,
+                   work_arrangements_json = excluded.work_arrangements_json,
+                   employment_types_json = excluded.employment_types_json,
+                   schedule_preference = excluded.schedule_preference,
+                   on_call_preference = excluded.on_call_preference,
+                   clearance_preference = excluded.clearance_preference,
+                   travel_tolerance = excluded.travel_tolerance,
+                   include_strong_location_outliers = excluded.include_strong_location_outliers,
+                   fit_signals_json = excluded.fit_signals_json,
                    updated_at = CURRENT_TIMESTAMP""",
             (
                 profile.profile_id,
@@ -334,8 +438,195 @@ def save_candidate_profile(
                 _encode_string_list(profile.credible_adjacent),
                 _encode_string_list(profile.learning_or_gap),
                 _encode_string_list(profile.avoid),
+                _encode_string_list(profile.target_roles),
+                _encode_string_list(profile.seniority_levels),
+                _encode_string_list(profile.preferred_locations),
+                profile.location_radius_miles,
+                _encode_string_list(profile.work_arrangements),
+                _encode_string_list(profile.employment_types),
+                profile.schedule_preference,
+                profile.on_call_preference,
+                profile.clearance_preference,
+                profile.travel_tolerance,
+                int(profile.include_strong_location_outliers),
+                json.dumps(profile.fit_signals),
             ),
         )
+        connection.execute(
+            """INSERT INTO active_profile_selection(singleton_id, profile_id)
+               VALUES(1, ?) ON CONFLICT(singleton_id) DO NOTHING""",
+            (profile.profile_id,),
+        )
+
+
+def list_candidate_profiles(database_path: str | Path) -> tuple[CandidateProfile, ...]:
+    with sqlite3.connect(database_path) as connection:
+        ids = tuple(
+            str(row[0])
+            for row in connection.execute(
+                "SELECT profile_id FROM candidate_profiles ORDER BY name COLLATE NOCASE"
+            )
+        )
+    return tuple(
+        profile
+        for profile_id in ids
+        if (profile := get_candidate_profile(database_path, profile_id)) is not None
+    )
+
+
+def set_active_candidate_profile(database_path: str | Path, profile_id: str) -> None:
+    if get_candidate_profile(database_path, profile_id) is None:
+        raise ValueError("The selected profile no longer exists.")
+    with sqlite3.connect(database_path) as connection:
+        connection.execute(
+            """INSERT INTO active_profile_selection(singleton_id, profile_id)
+               VALUES(1, ?) ON CONFLICT(singleton_id) DO UPDATE SET
+               profile_id = excluded.profile_id, updated_at = CURRENT_TIMESTAMP""",
+            (profile_id,),
+        )
+
+
+def create_candidate_profile(database_path: str | Path, name: str) -> CandidateProfile:
+    clean_name = name.strip()
+    if not clean_name:
+        raise ValueError("Profile name is required.")
+    if len(list_candidate_profiles(database_path)) >= 5:
+        raise ValueError("Junior supports up to five profiles.")
+    if any(
+        profile.name.casefold() == clean_name.casefold()
+        for profile in list_candidate_profiles(database_path)
+    ):
+        raise ValueError("A profile with that name already exists.")
+    profile = CandidateProfile(f"profile_{secrets.token_hex(8)}", clean_name)
+    save_candidate_profile(database_path, profile)
+    set_active_candidate_profile(database_path, profile.profile_id)
+    return profile
+
+
+def delete_candidate_profile(database_path: str | Path, profile_id: str) -> bool:
+    with sqlite3.connect(database_path) as connection:
+        count = connection.execute(
+            "SELECT COUNT(*) FROM candidate_profiles"
+        ).fetchone()[0]
+        if count <= 1:
+            raise ValueError("Junior must keep at least one profile.")
+        activity = connection.execute(
+            "SELECT COUNT(*) FROM scan_runs WHERE profile_id = ?", (profile_id,)
+        ).fetchone()[0]
+        if activity:
+            raise ValueError(
+                "This profile has scan history and cannot be deleted. "
+                "Keep it for an auditable record."
+            )
+        connection.execute(
+            "DELETE FROM role_discovery_suggestions WHERE profile_id = ?",
+            (profile_id,),
+        )
+        connection.execute(
+            "DELETE FROM active_profile_selection WHERE profile_id = ?", (profile_id,)
+        )
+        cursor = connection.execute(
+            "DELETE FROM candidate_profiles WHERE profile_id = ?", (profile_id,)
+        )
+        replacement = connection.execute(
+            "SELECT profile_id FROM candidate_profiles ORDER BY name LIMIT 1"
+        ).fetchone()
+        if replacement:
+            connection.execute(
+                "INSERT OR REPLACE INTO active_profile_selection(singleton_id, profile_id) VALUES(1, ?)",
+                (replacement[0],),
+            )
+    return cursor.rowcount > 0
+
+
+def export_candidate_profile(profile: CandidateProfile) -> dict[str, object]:
+    return {
+        "schema_version": 1,
+        "name": profile.name,
+        "compensation_floor_usd": profile.compensation_floor_usd,
+        "preferred_base_usd": profile.preferred_base_usd,
+        "core_strengths": profile.core_strengths,
+        "credible_adjacent": profile.credible_adjacent,
+        "learning_or_gap": profile.learning_or_gap,
+        "avoid": profile.avoid,
+        "target_roles": profile.target_roles,
+        "seniority_levels": profile.seniority_levels,
+        "preferred_locations": profile.preferred_locations,
+        "location_radius_miles": profile.location_radius_miles,
+        "work_arrangements": profile.work_arrangements,
+        "employment_types": profile.employment_types,
+        "schedule_preference": profile.schedule_preference,
+        "on_call_preference": profile.on_call_preference,
+        "clearance_preference": profile.clearance_preference,
+        "travel_tolerance": profile.travel_tolerance,
+        "include_strong_location_outliers": profile.include_strong_location_outliers,
+        "fit_signals": profile.fit_signals,
+    }
+
+
+def import_candidate_profile(
+    database_path: str | Path, values: dict[str, object]
+) -> CandidateProfile:
+    if values.get("schema_version") != 1:
+        raise ValueError("Unsupported Junior profile file.")
+    active = get_candidate_profile(database_path)
+    requested_name = str(values.get("name") or "Imported profile").strip()
+    existing_names = {
+        item.name.casefold() for item in list_candidate_profiles(database_path)
+    }
+    imported_name = requested_name
+    suffix = 1
+    while imported_name.casefold() in existing_names:
+        label = "Imported" if suffix == 1 else f"Imported {suffix}"
+        imported_name = f"{requested_name} ({label})"
+        suffix += 1
+    profile = create_candidate_profile(database_path, imported_name)
+    list_fields = (
+        "core_strengths",
+        "credible_adjacent",
+        "learning_or_gap",
+        "avoid",
+        "target_roles",
+        "seniority_levels",
+        "preferred_locations",
+        "work_arrangements",
+        "employment_types",
+    )
+    replacements = {
+        field: tuple(str(item) for item in values.get(field, ()) if str(item).strip())
+        for field in list_fields
+    }
+    from dataclasses import replace
+
+    imported = replace(
+        profile,
+        compensation_floor_usd=values.get("compensation_floor_usd"),
+        preferred_base_usd=values.get("preferred_base_usd"),
+        schedule_preference=str(values.get("schedule_preference") or "Any schedule"),
+        on_call_preference=str(values.get("on_call_preference") or "Review each job"),
+        clearance_preference=str(
+            values.get("clearance_preference") or "Review each job"
+        ),
+        travel_tolerance=values.get("travel_tolerance"),
+        location_radius_miles=int(values.get("location_radius_miles") or 25),
+        include_strong_location_outliers=bool(
+            values.get("include_strong_location_outliers")
+        ),
+        fit_signals=tuple(tuple(item) for item in values.get("fit_signals", ())),
+        **replacements,
+    )
+    save_candidate_profile(database_path, imported)
+    if active is not None:
+        set_active_candidate_profile(database_path, active.profile_id)
+    return imported
+
+
+def _migrate_scan_run_columns(connection: sqlite3.Connection) -> None:
+    columns = {
+        row[1] for row in connection.execute("PRAGMA table_info(scan_runs)").fetchall()
+    }
+    if "profile_id" not in columns:
+        connection.execute("ALTER TABLE scan_runs ADD COLUMN profile_id TEXT")
 
 
 def _migrate_candidate_profile_columns(connection: sqlite3.Connection) -> None:
@@ -350,12 +641,43 @@ def _migrate_candidate_profile_columns(connection: sqlite3.Connection) -> None:
         "credible_adjacent_json",
         "learning_or_gap_json",
         "avoid_json",
+        "target_roles_json",
+        "seniority_levels_json",
+        "preferred_locations_json",
+        "work_arrangements_json",
+        "employment_types_json",
+        "fit_signals_json",
     ):
         if column not in existing:
             connection.execute(
                 f"ALTER TABLE candidate_profiles ADD COLUMN {column} "
                 "TEXT NOT NULL DEFAULT '[]'"
             )
+    text_defaults = {
+        "schedule_preference": "Any schedule",
+        "on_call_preference": "Review each job",
+        "clearance_preference": "Review each job",
+    }
+    for column, default in text_defaults.items():
+        if column not in existing:
+            connection.execute(
+                f"ALTER TABLE candidate_profiles ADD COLUMN {column} "
+                f"TEXT NOT NULL DEFAULT '{default}'"
+            )
+    if "travel_tolerance" not in existing:
+        connection.execute(
+            "ALTER TABLE candidate_profiles ADD COLUMN travel_tolerance INTEGER"
+        )
+    if "location_radius_miles" not in existing:
+        connection.execute(
+            "ALTER TABLE candidate_profiles ADD COLUMN "
+            "location_radius_miles INTEGER NOT NULL DEFAULT 25"
+        )
+    if "include_strong_location_outliers" not in existing:
+        connection.execute(
+            "ALTER TABLE candidate_profiles ADD COLUMN "
+            "include_strong_location_outliers INTEGER NOT NULL DEFAULT 0"
+        )
 
 
 def _encode_string_list(values: tuple[str, ...]) -> str:
@@ -404,6 +726,43 @@ def list_companies(database_path: str | Path) -> tuple[dict[str, object], ...]:
                   COALESCE(source_slug, source_url, '') AS source,
                   enabled, updated_at
            FROM companies ORDER BY enabled DESC, name""",
+    )
+
+
+def save_company_source_health(
+    database_path: str | Path,
+    company_key: str,
+    state: str,
+    message: str,
+    jobs_found: int | None,
+) -> None:
+    with sqlite3.connect(database_path) as connection:
+        connection.execute(
+            """INSERT INTO company_source_health (
+                   company_key, state, message, jobs_found, checked_at
+               ) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+               ON CONFLICT(company_key) DO UPDATE SET
+                   state = excluded.state, message = excluded.message,
+                   jobs_found = excluded.jobs_found,
+                   checked_at = CURRENT_TIMESTAMP""",
+            (company_key, state, message, jobs_found),
+        )
+
+
+def list_company_source_health(
+    database_path: str | Path,
+) -> tuple[dict[str, object], ...]:
+    return _query_rows(
+        database_path,
+        """SELECT company_source_health.company_key, companies.name AS company,
+                  companies.source_type, companies.enabled,
+                  company_source_health.state, company_source_health.message,
+                  company_source_health.jobs_found,
+                  company_source_health.checked_at
+           FROM company_source_health
+           LEFT JOIN companies
+             ON companies.company_key = company_source_health.company_key
+           ORDER BY companies.name""",
     )
 
 
@@ -736,6 +1095,45 @@ def list_jobs(database_path: str | Path) -> tuple[dict[str, object], ...]:
     )
 
 
+def list_review_jobs(database_path: str | Path) -> tuple[dict[str, object], ...]:
+    return _query_rows(
+        database_path,
+        """SELECT job_postings.id, companies.name AS company, job_postings.title,
+                  job_postings.location, job_postings.remote_status,
+                  COALESCE(job_status.status, 'new') AS status,
+                  job_evaluations.recommendation,
+                  job_evaluations.recommended_action,
+                  job_evaluations.score,
+                  job_evaluations.location_status,
+                  job_postings.last_seen_at
+           FROM job_postings
+           LEFT JOIN companies ON companies.company_key = job_postings.company_key
+           LEFT JOIN job_status ON job_status.job_posting_id = job_postings.id
+           LEFT JOIN job_evaluations ON job_evaluations.id = (
+               SELECT latest.id FROM job_evaluations AS latest
+               WHERE latest.job_posting_id = job_postings.id
+               ORDER BY latest.created_at DESC, latest.id DESC LIMIT 1
+           )
+           WHERE COALESCE(job_status.status, 'new') IN ('saved', 'passed')
+              OR EXISTS (
+                  SELECT 1 FROM job_seen_events
+                  WHERE job_seen_events.job_posting_id = job_postings.id
+                    AND job_seen_events.scan_run_id = (
+                        SELECT scan_runs.id FROM scan_runs
+                        LEFT JOIN active_profile_selection
+                          ON active_profile_selection.singleton_id = 1
+                        WHERE scan_runs.status = 'completed'
+                          AND (
+                              scan_runs.profile_id IS NULL
+                              OR scan_runs.profile_id = active_profile_selection.profile_id
+                          )
+                        ORDER BY scan_runs.id DESC LIMIT 1
+                    )
+              )
+           ORDER BY job_postings.last_seen_at DESC, company, job_postings.title""",
+    )
+
+
 def get_job(database_path: str | Path, job_posting_id: int) -> dict[str, object] | None:
     rows = _query_rows(
         database_path,
@@ -858,6 +1256,29 @@ def list_scan_runs(database_path: str | Path) -> tuple[dict[str, object], ...]:
                   jobs_new, jobs_changed, collector_errors,
                   review_needed_count
            FROM scan_runs ORDER BY generated_at DESC, id DESC""",
+    )
+
+
+def list_scan_errors(
+    database_path: str | Path, scan_run_id: int | None = None
+) -> tuple[dict[str, object], ...]:
+    parameters: tuple[object, ...] = ()
+    where = ""
+    if scan_run_id is not None:
+        where = "WHERE scan_errors.scan_run_id = ?"
+        parameters = (scan_run_id,)
+    return _query_rows(
+        database_path,
+        f"""SELECT scan_errors.id, scan_errors.scan_run_id,
+                   scan_errors.company_key, companies.name AS company,
+                   scan_errors.source_type, scan_errors.error_type,
+                   scan_errors.error_message AS message, scan_errors.created_at
+            FROM scan_errors
+            LEFT JOIN companies
+              ON companies.company_key = scan_errors.company_key
+            {where}
+            ORDER BY scan_errors.created_at DESC, scan_errors.id DESC""",
+        parameters,
     )
 
 

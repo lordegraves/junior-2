@@ -73,6 +73,21 @@ def test_scan_service_persists_new_seen_and_changed_jobs(tmp_path: Path) -> None
     assert lifecycle_counts(database)["job_seen_events"] == 3
 
 
+def test_scan_service_can_target_one_enabled_company(tmp_path: Path) -> None:
+    database = initialize_database(tmp_path / "junior.sqlite3")
+    for key in ("acme", "other"):
+        save_company(database, company_key=key, name=key.title(), source_type="stub")
+
+    summary = ScanService(
+        database,
+        CollectorRegistry({"stub": StubCollector()}),
+        company_keys=("other",),
+    ).run()
+
+    assert summary.companies_scanned == 1
+    assert list_jobs(database)[0]["company"] == "Other"
+
+
 def test_scan_service_isolates_collector_errors(tmp_path: Path) -> None:
     database = initialize_database(tmp_path / "junior.sqlite3")
     save_company(

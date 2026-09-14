@@ -23,6 +23,8 @@ def pyinstaller_arguments() -> list[str]:
         str(repository / "src"),
         "--collect-data",
         "junior.catalog",
+        "--collect-data",
+        "junior.reference_data",
         str(repository / "src" / "junior" / "__main__.py"),
     ]
 

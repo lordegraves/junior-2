@@ -15,6 +15,18 @@ class CandidateProfile:
     credible_adjacent: tuple[str, ...] = ()
     learning_or_gap: tuple[str, ...] = ()
     avoid: tuple[str, ...] = ()
+    target_roles: tuple[str, ...] = ()
+    seniority_levels: tuple[str, ...] = ()
+    preferred_locations: tuple[str, ...] = ()
+    location_radius_miles: int = 25
+    work_arrangements: tuple[str, ...] = ()
+    employment_types: tuple[str, ...] = ()
+    schedule_preference: str = "Any schedule"
+    on_call_preference: str = "Review each job"
+    clearance_preference: str = "Review each job"
+    travel_tolerance: int | None = None
+    include_strong_location_outliers: bool = False
+    fit_signals: tuple[tuple[str, str, str], ...] = ()
 
 
 @dataclass(frozen=True)

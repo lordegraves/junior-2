@@ -53,6 +53,66 @@ jobs:
       - if: runner.os == 'Windows'
         run: choco install innosetup --no-progress -y
       - run: ${{ matrix.command }}
+      - name: Smoke test Windows installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $installRoot = Join-Path $env:RUNNER_TEMP "Junior2Smoke"
+          $dataRoot = Join-Path $env:RUNNER_TEMP "Junior2Data"
+          Start-Process "dist/Junior-2.0-Windows-x86_64-Setup.exe" -Wait -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/DIR=$installRoot"
+          $env:JUNIOR_DATA_DIR = $dataRoot
+          $process = Start-Process (Join-Path $installRoot "Junior 2.0.exe") -PassThru
+          for ($attempt = 0; $attempt -lt 30; $attempt++) {
+            if (Test-Path (Join-Path $dataRoot "junior-2.sqlite3")) { break }
+            Start-Sleep -Seconds 1
+          }
+          if (-not (Test-Path (Join-Path $dataRoot "junior-2.sqlite3"))) { throw "Packaged app did not initialize its database." }
+          Stop-Process -Id $process.Id -Force
+          Start-Process (Join-Path $installRoot "unins000.exe") -Wait -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"
+          if (Test-Path (Join-Path $installRoot "Junior 2.0.exe")) { throw "Uninstaller left the application executable behind." }
+      - name: Smoke test macOS disk image
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          dmg=$(find dist -name 'Junior-2.0-macOS-*.dmg' -print -quit)
+          mount_dir="$RUNNER_TEMP/Junior2Mount"
+          app_dir="$RUNNER_TEMP/Junior 2.0.app"
+          data_dir="$RUNNER_TEMP/Junior2Data"
+          mkdir -p "$mount_dir"
+          hdiutil attach "$dmg" -mountpoint "$mount_dir" -nobrowse
+          test -d "$mount_dir/Junior 2.0.app"
+          test -L "$mount_dir/Applications"
+          cp -R "$mount_dir/Junior 2.0.app" "$app_dir"
+          hdiutil detach "$mount_dir"
+          QT_QPA_PLATFORM=offscreen JUNIOR_DATA_DIR="$data_dir" "$app_dir/Contents/MacOS/Junior 2.0" &
+          app_pid=$!
+          for attempt in $(seq 1 30); do
+            test -f "$data_dir/junior-2.sqlite3" && break
+            sleep 1
+          done
+          test -f "$data_dir/junior-2.sqlite3"
+          kill "$app_pid"
+          wait "$app_pid" || true
+      - name: Smoke test Linux package
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          package=$(find dist -name 'Junior-2.0-Linux-*.deb' -print -quit)
+          data_dir="$RUNNER_TEMP/Junior2Data"
+          sudo dpkg -i "$package"
+          QT_QPA_PLATFORM=offscreen JUNIOR_DATA_DIR="$data_dir" '/opt/junior2/Junior 2.0' &
+          app_pid=$!
+          for attempt in $(seq 1 30); do
+            test -f "$data_dir/junior-2.sqlite3" && break
+            sleep 1
+          done
+          test -f "$data_dir/junior-2.sqlite3"
+          kill "$app_pid"
+          wait "$app_pid" || true
+          sudo dpkg -r junior2
+          test ! -e '/opt/junior2/Junior 2.0'
       - uses: actions/upload-artifact@v4
         with:
           name: Junior-2.0-${{ matrix.platform }}

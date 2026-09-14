@@ -34,6 +34,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "junior.catalog" = ["*.json"]
+"junior.reference_data" = ["*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

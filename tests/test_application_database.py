@@ -16,6 +16,7 @@ from junior.infrastructure.application_database import (
     list_applications,
     list_companies,
     list_jobs,
+    list_review_jobs,
     save_application,
     save_candidate_profile,
     save_company,
@@ -120,6 +121,38 @@ def test_initialize_database_creates_lifecycle_tables(tmp_path: Path) -> None:
         "job_history",
         "application_tracker",
     }
+
+
+def test_review_inbox_contains_latest_scan_plus_durable_decisions(
+    tmp_path: Path,
+) -> None:
+    database = initialize_database(tmp_path / "junior.sqlite3")
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "INSERT INTO companies(company_key, name, source_type) "
+            "VALUES('acme', 'Acme', 'greenhouse')"
+        )
+        for index, title in enumerate(("Old New", "Old Saved", "Latest"), start=1):
+            connection.execute(
+                """INSERT INTO job_postings(
+                       id, company_key, source_type, source_url, title,
+                       canonical_key, content_hash
+                   ) VALUES (?, 'acme', 'greenhouse', ?, ?, ?, 'hash')""",
+                (index, f"https://example/{index}", title, f"acme:{index}"),
+            )
+        connection.execute("INSERT INTO scan_runs(id, status) VALUES(1, 'completed')")
+        connection.execute("INSERT INTO scan_runs(id, status) VALUES(2, 'completed')")
+        connection.execute(
+            "INSERT INTO job_seen_events(job_posting_id, scan_run_id, event_type) "
+            "VALUES(1, 1, 'new'), (2, 1, 'new'), (3, 2, 'new')"
+        )
+        connection.execute(
+            "INSERT INTO job_status(job_posting_id, status) VALUES(2, 'saved')"
+        )
+
+    rows = list_review_jobs(database)
+
+    assert {row["title"] for row in rows} == {"Old Saved", "Latest"}
 
 
 def test_candidate_profile_round_trips(tmp_path: Path) -> None:
@@ -290,3 +323,102 @@ def test_history_record_can_be_restored_to_tracker(tmp_path: Path) -> None:
     assert restored.company_name == "Acme"
     assert restored.role_title == "Linux Engineer"
     assert restored.outcome == "Pending / In Progress"
+
+
+def test_managed_profiles_persist_full_search_preferences(tmp_path: Path) -> None:
+    from junior.infrastructure.application_database import (
+        create_candidate_profile,
+        list_candidate_profiles,
+        set_active_candidate_profile,
+    )
+
+    database = initialize_database(tmp_path / "junior.sqlite3")
+    first = CandidateProfile(
+        "profile_first0001",
+        "Infrastructure",
+        target_roles=("Platform Engineer", "HPC Engineer"),
+        seniority_levels=("Senior",),
+        preferred_locations=("Fort Collins, Colorado",),
+        location_radius_miles=50,
+        work_arrangements=("Remote", "Hybrid"),
+        employment_types=("Full-time",),
+        schedule_preference="Day shift",
+        on_call_preference="Willing to participate",
+        clearance_preference="Exclude jobs requiring an existing active clearance",
+        travel_tolerance=20,
+        include_strong_location_outliers=True,
+    )
+    save_candidate_profile(database, first)
+    second = create_candidate_profile(database, "Research")
+    set_active_candidate_profile(database, first.profile_id)
+
+    assert get_candidate_profile(database) == first
+    assert get_candidate_profile(database).location_radius_miles == 50
+    assert {item.profile_id for item in list_candidate_profiles(database)} == {
+        first.profile_id,
+        second.profile_id,
+    }
+
+
+def test_profile_export_excludes_resume_and_import_assigns_new_identity(
+    tmp_path: Path,
+) -> None:
+    from junior.infrastructure.application_database import (
+        export_candidate_profile,
+        import_candidate_profile,
+    )
+
+    database = initialize_database(tmp_path / "junior.sqlite3")
+    original = CandidateProfile(
+        "profile_export001",
+        "Export me",
+        resume_source_path="/private/resume.docx",
+        target_roles=("Linux Engineer",),
+    )
+    save_candidate_profile(database, original)
+
+    portable = export_candidate_profile(original)
+    imported = import_candidate_profile(database, portable)
+
+    assert "resume_source_path" not in portable
+    assert imported.profile_id != original.profile_id
+    assert imported.resume_source_path is None
+    assert imported.target_roles == ("Linux Engineer",)
+    assert get_candidate_profile(database) == original
+
+
+def test_profile_with_scan_history_cannot_be_deleted(tmp_path: Path) -> None:
+    from junior.infrastructure.application_database import (
+        create_candidate_profile,
+        delete_candidate_profile,
+    )
+
+    database = initialize_database(tmp_path / "junior.sqlite3")
+    profile = create_candidate_profile(database, "Audited profile")
+    create_candidate_profile(database, "Replacement")
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "INSERT INTO scan_runs(profile_id, status) VALUES (?, 'completed')",
+            (profile.profile_id,),
+        )
+
+    with pytest.raises(ValueError, match="scan history"):
+        delete_candidate_profile(database, profile.profile_id)
+
+
+def test_company_source_health_is_durable(tmp_path: Path) -> None:
+    from junior.infrastructure.application_database import (
+        list_company_source_health,
+        save_company_source_health,
+    )
+
+    database = initialize_database(tmp_path / "junior.sqlite3")
+    save_company(database, company_key="acme", name="Acme", source_type="stub")
+    save_company_source_health(database, "acme", "healthy", "Connection succeeded.", 12)
+
+    health = list_company_source_health(database)
+
+    assert len(health) == 1
+    assert health[0]["company"] == "Acme"
+    assert health[0]["state"] == "healthy"
+    assert health[0]["jobs_found"] == 12

@@ -68,3 +68,14 @@ def test_evaluator_tracks_an_already_applied_role() -> None:
     )
     assert result.recommendation is Recommendation.TRACK_STATUS
     assert any("already_applied" in reason for reason in result.reasons)
+
+
+def test_evaluator_records_approved_target_role_alignment() -> None:
+    result = evaluate_job(
+        _posting("$160K-$190K", "Linux Python HPC automation"),
+        _profile(target_roles=("Platform Engineer",)),
+        "Linux Python HPC automation",
+    )
+
+    assert result.score == 100
+    assert any("Target-role alignment" in reason for reason in result.reasons)

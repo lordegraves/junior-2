@@ -6,7 +6,7 @@ import hashlib
 import json
 import sqlite3
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -17,6 +17,7 @@ from junior.application.review_workspace import (
     ReviewValidationState,
     ReviewWorkspaceResult,
 )
+from junior.application.role_discovery import approved_role_mappings
 from junior.collectors.contracts import CollectedJob, CollectorSource
 from junior.collectors.registry import CollectorRegistry
 from junior.domain.documents import DocumentKind, EvidenceReference, SourceDocument
@@ -53,11 +54,13 @@ class ScanService:
         registry: CollectorRegistry,
         qualification_runner: QualificationRunner | None = None,
         resume_runner: ResumeRunner | None = None,
+        company_keys: tuple[str, ...] | None = None,
     ) -> None:
         self._database_path = Path(database_path)
         self._registry = registry
         self._qualification_runner = qualification_runner
         self._resume_runner = resume_runner
+        self._company_keys = company_keys
 
     def run(self) -> ScanSummary:
         sources = self._sources()
@@ -70,7 +73,7 @@ class ScanService:
                 profile.profile_id, resume_path, resume_text
             )
         history_records = list_history_records(self._database_path)
-        run_id = self._begin_run(len(sources))
+        run_id = self._begin_run(len(sources), profile.profile_id if profile else None)
         scanned = collected = new = changed = errors = top = review = omitted = 0
         for source in sources:
             try:
@@ -114,11 +117,15 @@ class ScanService:
     def _sources(self) -> tuple[CollectorSource, ...]:
         with sqlite3.connect(self._database_path) as connection:
             connection.row_factory = sqlite3.Row
-            rows = connection.execute(
-                """SELECT company_key, name, source_type, source_slug, source_url,
-                          source_settings_json
-                   FROM companies WHERE enabled = 1 ORDER BY name"""
-            ).fetchall()
+            query = """SELECT company_key, name, source_type, source_slug, source_url,
+                              source_settings_json
+                       FROM companies WHERE enabled = 1"""
+            parameters: tuple[str, ...] = ()
+            if self._company_keys:
+                placeholders = ",".join("?" for _ in self._company_keys)
+                query += f" AND company_key IN ({placeholders})"
+                parameters = self._company_keys
+            rows = connection.execute(query + " ORDER BY name", parameters).fetchall()
         return tuple(
             CollectorSource(
                 company_id=row["company_key"],
@@ -129,14 +136,15 @@ class ScanService:
             for row in rows
         )
 
-    def _begin_run(self, requested: int) -> int:
+    def _begin_run(self, requested: int, profile_id: str | None) -> int:
         with sqlite3.connect(self._database_path) as connection:
             cursor = connection.execute(
                 """INSERT INTO scan_runs (
-                       generated_at, started_at, status, companies_requested,
+                       generated_at, started_at, profile_id, status,
+                       companies_requested,
                        companies_enabled
-                   ) VALUES (?, ?, 'running', ?, ?)""",
-                (_now(), _now(), requested, requested),
+                   ) VALUES (?, ?, ?, 'running', ?, ?)""",
+                (_now(), _now(), profile_id, requested, requested),
             )
             return int(cursor.lastrowid)
 
@@ -234,6 +242,18 @@ class ScanService:
         resume_text: str | None,
         history_records,
     ) -> Recommendation:
+        effective_profile = profile
+        if profile is not None:
+            approved = approved_role_mappings(
+                self._database_path, profile.profile_id, source.company_id
+            )
+            if approved:
+                effective_profile = replace(
+                    profile,
+                    target_roles=tuple(
+                        dict.fromkeys((*profile.target_roles, *approved))
+                    ),
+                )
         evaluation = evaluate_job(
             JobPosting(
                 source.company_id,
@@ -247,7 +267,7 @@ class ScanService:
                 job.remote_status,
                 job.salary_text,
             ),
-            profile,
+            effective_profile,
             resume_text,
             history_records,
         )

@@ -11,6 +11,7 @@ def test_shared_package_includes_native_app_and_catalog() -> None:
     assert "--windowed" in arguments
     assert arguments[arguments.index("--icon") + 1].endswith("assets/Junior.png")
     assert arguments[arguments.index("--collect-data") + 1] == "junior.catalog"
+    assert "junior.reference_data" in arguments
     assert arguments[-1].endswith("src/junior/__main__.py")
 
 

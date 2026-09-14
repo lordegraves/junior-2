@@ -9,6 +9,7 @@ from junior.domain.lifecycle import CandidateProfile, JobPosting
 from junior.scoring.compensation import evaluate_compensation
 from junior.scoring.history_match import HistoryRecord, summarize_history_risk
 from junior.scoring.legacy_policy import evaluate_legacy_policy
+from junior.scoring.profile_constraints import evaluate_profile_constraints
 from junior.scoring.recommendation_actions import recommend_action
 from junior.scoring.resume_match import match_resume_to_posting
 
@@ -47,8 +48,12 @@ def evaluate_job(
     compensation = evaluate_compensation(posting.salary_text, floor)
     match = match_resume_to_posting(posting, profile, resume_text)
     policy = evaluate_legacy_policy(posting)
+    constraints = evaluate_profile_constraints(posting, profile)
     reasons: list[str] = []
     reasons.extend(f"Legacy policy: {reason}." for reason in policy.reasons)
+    reasons.extend(f"Profile match: {reason}." for reason in constraints.matches)
+    reasons.extend(f"Profile review: {reason}." for reason in constraints.review)
+    reasons.extend(f"Profile constraint: {reason}." for reason in constraints.blockers)
     score = {
         "Very Strong": 85,
         "Strong": 72,
@@ -56,6 +61,12 @@ def evaluate_job(
         "Weak": 20,
         "Unknown": 35,
     }[match.label]
+    target_roles = _matching_title_terms(
+        posting.title, profile.target_roles if profile else ()
+    )
+    if target_roles:
+        score += 8
+        reasons.append(f"Target-role alignment: {', '.join(target_roles)}.")
     if compensation.label == "Meets floor":
         score += 10
         reasons.append("The published compensation meets the profile floor.")
@@ -88,6 +99,7 @@ def evaluate_job(
     elif (
         compensation.label == "Below floor"
         or avoided
+        or constraints.blockers
         or score < 35
         or policy.location_status == "skipped"
         or any(
@@ -98,6 +110,7 @@ def evaluate_job(
     elif (
         score >= 70
         and not match.gaps
+        and not constraints.review
         and history_risk.level != "blocker_review"
         and "production_kubernetes_primary_risk" not in policy.reasons
     ):
@@ -122,7 +135,9 @@ def evaluate_job(
         match.gaps,
         tuple(reasons),
         policy.score,
-        policy.location_status,
+        constraints.location_status
+        if constraints.location_status != "unknown"
+        else policy.location_status,
         action.action,
         action.hiring_probability,
         action.risks,
@@ -134,3 +149,12 @@ def _matching_terms(posting: JobPosting, terms: tuple[str, ...]) -> tuple[str, .
         filter(None, (posting.title, posting.location, posting.description))
     ).casefold()
     return tuple(term for term in dict.fromkeys(terms) if term.casefold() in text)
+
+
+def _matching_title_terms(title: str, terms: tuple[str, ...]) -> tuple[str, ...]:
+    title_words = {word for word in title.casefold().split() if len(word) >= 3}
+    return tuple(
+        term
+        for term in dict.fromkeys(terms)
+        if {word for word in term.casefold().split() if len(word) >= 3} <= title_words
+    )

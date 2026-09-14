@@ -6,7 +6,7 @@ the 1.x web interface; behavior and durable data must remain equivalent.
 
 | Area | 1.x behavior | 2.0 status |
 |---|---|---|
-| Profile | Resume, compensation, strengths, adjacent skills, gaps, avoid list | Complete |
+| Profile | RC6 overview cards, structured preferences, résumé, job fit, role discovery, managed profiles, transfer | Complete |
 | Companies | Full source settings, filtering, enable/disable | Complete |
 | Company import | Read complete 1.x YAML catalog | Complete |
 | Database import | Read-only import of 1.x lifecycle database | Complete |
@@ -37,11 +37,12 @@ the 1.x web interface; behavior and durable data must remain equivalent.
 | LLM interpretation | Managed local runtime and evidence validation | Complete |
 | Scan evaluation | Persist interpretation and deterministic decision per job | Complete |
 | Recommendations | Top match, review, omit and auditable reasons | Complete |
-| History | Import, match, summarize, archive, tracker synchronization | Complete |
-| Reports | Current scan, saved reports, HTML/Markdown views | Complete |
-| Email | Preview and optional configured delivery | Complete |
-| Native pages | Home, profile, companies, scans, jobs, tracker, history, reports, settings, diagnostics | Complete |
-| Packaging | Clean macOS, Windows, Linux installs with isolated 2.0 data | Complete; native CI verification required per release |
+| History | Import, match, summarize, archive, tracker synchronization and RC6 controls/cards | Complete |
+| Reports | Current scan, saved reports, HTML/Markdown views and RC6 audit cards | Complete |
+| Email | Preview, providers, authenticated connection test, secret references, and configured delivery | Complete |
+| Scheduling | Native user-level schedules and headless installed-app scans on all three platforms | Complete |
+| Native pages | Complete RC6 card, field, dropdown, filter, action, and help parity | Complete — tracked in `NATIVE_UI_AUDIT.md` |
+| Packaging | Clean macOS, Windows, Linux installs after the complete native UI gate | Platform smoke tests pending |
 
 The gate is functional parity, not identical source layout or an identical raw
 test count. Each migrated behavior must have equivalent or stronger regression

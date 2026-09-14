@@ -6,6 +6,10 @@ from junior.bootstrap import run_application
 
 
 def main() -> int:
+    if "--scheduled-scan" in sys.argv:
+        from junior.desktop.application import run_scheduled_scan
+
+        return run_scheduled_scan()
     return run_application(sys.argv)
 
 

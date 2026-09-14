@@ -1,12 +1,16 @@
 from junior.reporting.email_sender import send_email_report
+from junior.reporting.email_sender import (
+    test_email_connection as check_email_connection,
+)
 
 
 class FakeSMTP:
     instances = []
 
-    def __init__(self, host, port):
+    def __init__(self, host, port, timeout=None):
         self.host = host
         self.port = port
+        self.timeout = timeout
         self.started_tls = False
         self.message = None
         self.__class__.instances.append(self)
@@ -25,6 +29,9 @@ class FakeSMTP:
 
     def send_message(self, message):
         self.message = message
+
+    def close(self):
+        return None
 
 
 def _settings(**changes):
@@ -61,3 +68,17 @@ def test_email_sends_with_starttls(monkeypatch) -> None:
     assert smtp.started_tls
     assert smtp.credentials == ("junior@example.com", "secret")
     assert smtp.message["From"] == "Junior <junior@example.com>"
+
+
+def test_connection_authenticates_without_sending(monkeypatch) -> None:
+    FakeSMTP.instances.clear()
+    monkeypatch.setenv("JUNIOR_SMTP_PASSWORD", "secret")
+    monkeypatch.setattr("smtplib.SMTP", FakeSMTP)
+
+    result = check_email_connection(_settings())
+
+    smtp = FakeSMTP.instances[0]
+    assert result.sent
+    assert smtp.credentials == ("junior@example.com", "secret")
+    assert smtp.message is None
+    assert smtp.timeout == 10
